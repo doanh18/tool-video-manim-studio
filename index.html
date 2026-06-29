@@ -929,6 +929,33 @@
             </label>
           </div>
         </div>
+        <div class="field">
+          <label class="label">Background · paper style &amp; colors</label>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <select id="bgPreset" class="input" style="flex:1;min-width:140px;cursor:pointer">
+              <option value="notebook">📓 Notebook lined (default)</option>
+              <option value="cream">📜 Cream paper</option>
+              <option value="white">⬜ Plain white</option>
+              <option value="grid">⊞ Grid paper</option>
+              <option value="dotgrid">⋮⋮ Dot grid</option>
+              <option value="pastel">🌸 Pastel pink</option>
+              <option value="mint">🌿 Mint green</option>
+              <option value="custom">🎨 Custom (use pickers →)</option>
+            </select>
+            <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text-faint);font-family:'JetBrains Mono',monospace" title="Paper color">
+              BG <input type="color" id="bgColor" value="#fefefe" style="width:34px;height:28px;padding:0;border:1px solid var(--border,#333);border-radius:5px;background:none;cursor:pointer">
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text-faint);font-family:'JetBrains Mono',monospace" title="Lines / grid / dots color">
+              LINE <input type="color" id="bgLineColor" value="#b4d2eb" style="width:34px;height:28px;padding:0;border:1px solid var(--border,#333);border-radius:5px;background:none;cursor:pointer">
+            </label>
+            <select id="bgPattern" class="input" style="min-width:90px;cursor:pointer" title="Pattern type">
+              <option value="lines">— Lines</option>
+              <option value="grid">⊞ Grid</option>
+              <option value="dots">⋮ Dots</option>
+              <option value="none">∅ None</option>
+            </select>
+          </div>
+        </div>
         <label class="label">Answer Options · Click ◉ to mark correct</label>
         <div class="opt-row">
           <div class="opt-letter">A</div>
@@ -1988,7 +2015,21 @@ const RS = {
   brandBadge: 'MATH 😎',
   badgeBg: '#8B6F3F',      // badge background (default: coyote brown)
   badgeFg: '#FFF8DC',      // badge text color (default: cream)
+  bgColor: '#fefefe',      // paper background color
+  bgLineColor: '#b4d2eb',  // line / grid / dot color
+  bgPattern: 'lines',      // 'lines' | 'grid' | 'dots' | 'none'
   title: 'ASVAB Arithmetic Reasoning'
+};
+
+// Quick-pick background presets — each defines paper color, accent color, pattern type
+const BACKGROUND_PRESETS = {
+  notebook: { bgColor: '#fefefe', bgLineColor: '#b4d2eb', bgPattern: 'lines' },
+  cream:    { bgColor: '#fdf6e3', bgLineColor: '#c8aa78', bgPattern: 'lines' },
+  white:    { bgColor: '#ffffff', bgLineColor: '#ffffff', bgPattern: 'none' },
+  grid:     { bgColor: '#fefefe', bgLineColor: '#b4d2eb', bgPattern: 'grid' },
+  dotgrid:  { bgColor: '#fefefe', bgLineColor: '#b4b4c8', bgPattern: 'dots' },
+  pastel:   { bgColor: '#fef0f2', bgLineColor: '#ffb4c8', bgPattern: 'lines' },
+  mint:     { bgColor: '#ecfdf5', bgLineColor: '#78b496', bgPattern: 'lines' },
 };
 
 // Karaoke state — built when audio is ready
@@ -2043,6 +2084,7 @@ function collectFormState() {
   const ids = [
     'topicInput', 'qText', 'brandTopText',
     'badgeText', 'badgeBgColor', 'badgeTextColor',
+    'bgPreset', 'bgColor', 'bgLineColor', 'bgPattern',
     'stylePrompt', 'scriptText'
   ];
   for (const id of ids) {
@@ -2088,6 +2130,10 @@ function loadFormState() {
     setVal('badgeText', s.badgeText);
     setVal('badgeBgColor', s.badgeBgColor);
     setVal('badgeTextColor', s.badgeTextColor);
+    setVal('bgPreset', s.bgPreset);
+    setVal('bgColor', s.bgColor);
+    setVal('bgLineColor', s.bgLineColor);
+    setVal('bgPattern', s.bgPattern);
     setVal('stylePrompt', s.stylePrompt);
     setVal('scriptText', s.scriptText);
     setVal('voicePresets', s.voicePresets);
@@ -2131,9 +2177,14 @@ function attachFormStateListeners() {
     el.addEventListener('input', scheduleSaveState);
   });
   // Color pickers (not .input)
-  ['badgeBgColor', 'badgeTextColor'].forEach(id => {
+  ['badgeBgColor', 'badgeTextColor', 'bgColor', 'bgLineColor'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', scheduleSaveState);
+  });
+  // Background preset + pattern selectors
+  ['bgPreset', 'bgPattern'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', scheduleSaveState);
   });
   // Voice preset selector
   const voiceSel = document.getElementById('voicePresets');
@@ -2160,6 +2211,14 @@ function syncRenderStateFromEditor() {
   if (badgeBgEl) RS.badgeBg = badgeBgEl.value;
   const badgeFgEl = document.getElementById('badgeTextColor');
   if (badgeFgEl) RS.badgeFg = badgeFgEl.value;
+
+  // Background — read 3 controls (color picker for paper, color picker for line, pattern select)
+  const bgColorEl = document.getElementById('bgColor');
+  if (bgColorEl) RS.bgColor = bgColorEl.value;
+  const bgLineColorEl = document.getElementById('bgLineColor');
+  if (bgLineColorEl) RS.bgLineColor = bgLineColorEl.value;
+  const bgPatternEl = document.getElementById('bgPattern');
+  if (bgPatternEl) RS.bgPattern = bgPatternEl.value;
 
   const optRows = document.querySelectorAll('.opt-row');
   RS.options = [];
@@ -2310,20 +2369,52 @@ function renderFrame(ctx, W, H, t) {
   const SAFE_BOTTOM = 260 * s;         // stop drawing this far from bottom (avoid caption + buttons)
   const safeH = H - SAFE_TOP - SAFE_BOTTOM;  // usable vertical space
 
-  // ===== Lined notebook paper background =====
-  // Cream-white paper color + horizontal blue lines (every ~30px scaled)
-  ctx.fillStyle = '#fefefe';
+  // ===== Background (paper + pattern) =====
+  // Defaults preserve old look; user can override via the Background section in the editor.
+  const bgColor = RS.bgColor || '#fefefe';
+  const bgLineColor = RS.bgLineColor || '#b4d2eb';
+  const bgPattern = RS.bgPattern || 'lines';
+
+  ctx.fillStyle = bgColor;
   ctx.fillRect(0, 0, W, H);
-  // Horizontal lines (faint blue, like notebook)
-  ctx.strokeStyle = 'rgba(180, 210, 235, 0.55)';
-  ctx.lineWidth = 1;
+
   const lineSpacing = 30 * s;
-  for (let y = lineSpacing; y < H; y += lineSpacing) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
+  if (bgPattern === 'lines') {
+    ctx.strokeStyle = bgLineColor;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1;
+    for (let y = lineSpacing; y < H; y += lineSpacing) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  } else if (bgPattern === 'grid') {
+    ctx.strokeStyle = bgLineColor;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 1;
+    for (let y = lineSpacing; y < H; y += lineSpacing) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    for (let x = lineSpacing; x < W; x += lineSpacing) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  } else if (bgPattern === 'dots') {
+    ctx.fillStyle = bgLineColor;
+    ctx.globalAlpha = 0.7;
+    const dotR = 1.2 * s;
+    for (let y = lineSpacing; y < H; y += lineSpacing) {
+      for (let x = lineSpacing; x < W; x += lineSpacing) {
+        ctx.beginPath();
+        ctx.arc(x, y, dotR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
   }
+  // 'none' = solid paper color, no overlay
 
   // Vertical cursor starts in safe zone (not at top edge)
   let cursorY = SAFE_TOP;
@@ -2738,16 +2829,44 @@ function formatMathText(raw) {
 
 function wrapText(ctx, text, maxWidth) {
   if (!text) return [''];
+
+  // Helper: split a single super-long "word" (no spaces) into chunks that fit
+  // maxWidth. Used for text like "isaaaaaaaaa" where there's nothing to break on.
+  const breakLongWord = (word) => {
+    const chunks = [];
+    let buf = '';
+    for (const ch of word) {
+      const test = buf + ch;
+      if (ctx.measureText(test).width <= maxWidth) {
+        buf = test;
+      } else {
+        if (buf) chunks.push(buf);
+        buf = ch;
+      }
+    }
+    if (buf) chunks.push(buf);
+    return chunks.length ? chunks : [word];
+  };
+
   const words = String(text).split(/\s+/);
   const lines = [];
   let current = '';
   for (const w of words) {
+    if (!w) continue;
     const test = current ? current + ' ' + w : w;
     if (ctx.measureText(test).width <= maxWidth) {
       current = test;
+      continue;
+    }
+    // The candidate line is too wide.
+    if (current) lines.push(current);
+    // Is this single word ALSO wider than maxWidth on its own? Then char-break it.
+    if (ctx.measureText(w).width > maxWidth) {
+      const chunks = breakLongWord(w);
+      // All but the last chunk are full lines; the last becomes the new current
+      for (let i = 0; i < chunks.length - 1; i++) lines.push(chunks[i]);
+      current = chunks[chunks.length - 1];
     } else {
-      if (current) lines.push(current);
-      // If single word is longer than maxWidth, push it anyway (will overflow but won't infinite-loop)
       current = w;
     }
   }
@@ -2781,14 +2900,44 @@ function drawQuestionLeft(ctx, text, startX, startY, maxWidth, lineH, t) {
 
   words.forEach((w, gIdx) => {
     const wMet = ctx.measureText(w).width;
-    const addWidth = (cur.length ? spaceW : 0) + wMet;
-    if (curWidth + addWidth > maxWidth && cur.length) {
+
+    if (wMet <= maxWidth) {
+      // Normal word that fits within one line — use the standard wrap logic
+      const addWidth = (cur.length ? spaceW : 0) + wMet;
+      if (curWidth + addWidth > maxWidth && cur.length) {
+        lines.push({ words: cur, width: curWidth });
+        cur = [];
+        curWidth = 0;
+      }
+      cur.push({ text: w, gIdx, width: wMet });
+      curWidth += (cur.length === 1 ? wMet : addWidth);
+      return;
+    }
+
+    // Single "word" wider than maxWidth (e.g. "isaaaaaaaaaa...") — char-break it.
+    // Flush whatever is on the current line first, then walk the chars.
+    if (cur.length) {
       lines.push({ words: cur, width: curWidth });
       cur = [];
       curWidth = 0;
     }
-    cur.push({ text: w, gIdx, width: wMet });
-    curWidth += (cur.length === 1 ? wMet : addWidth);
+    let buf = '';
+    for (const ch of w) {
+      const test = buf + ch;
+      if (ctx.measureText(test).width > maxWidth && buf) {
+        const bufW = ctx.measureText(buf).width;
+        lines.push({ words: [{ text: buf, gIdx, width: bufW }], width: bufW });
+        buf = ch;
+      } else {
+        buf = test;
+      }
+    }
+    // Leave the last chunk on the current line so the NEXT word can still join it
+    if (buf) {
+      const bufW = ctx.measureText(buf).width;
+      cur = [{ text: buf, gIdx, width: bufW }];
+      curWidth = bufW;
+    }
   });
   if (cur.length) lines.push({ words: cur, width: curWidth });
 
@@ -3415,6 +3564,38 @@ document.querySelectorAll('.input').forEach(i => i.addEventListener('input', syn
 ['badgeBgColor', 'badgeTextColor'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('input', syncEditor);
+});
+
+// Background controls — preset select fills the BG/LINE/PATTERN inputs,
+// then any of those 3 inputs being touched switches preset back to "custom".
+const bgPresetSel = document.getElementById('bgPreset');
+const bgColorPicker = document.getElementById('bgColor');
+const bgLineColorPicker = document.getElementById('bgLineColor');
+const bgPatternSel = document.getElementById('bgPattern');
+
+if (bgPresetSel) {
+  bgPresetSel.addEventListener('change', () => {
+    const preset = BACKGROUND_PRESETS[bgPresetSel.value];
+    if (preset) {
+      if (bgColorPicker)     bgColorPicker.value     = preset.bgColor;
+      if (bgLineColorPicker) bgLineColorPicker.value = preset.bgLineColor;
+      if (bgPatternSel)      bgPatternSel.value      = preset.bgPattern;
+    }
+    syncEditor();
+  });
+}
+[bgColorPicker, bgLineColorPicker, bgPatternSel].forEach(el => {
+  if (!el) return;
+  el.addEventListener('input', () => {
+    // Any direct edit ⇒ user is now in "custom" mode
+    if (bgPresetSel && bgPresetSel.value !== 'custom') bgPresetSel.value = 'custom';
+    syncEditor();
+  });
+  // Native <select> fires 'change' rather than 'input'
+  el.addEventListener('change', () => {
+    if (bgPresetSel && bgPresetSel.value !== 'custom') bgPresetSel.value = 'custom';
+    syncEditor();
+  });
 });
 // Mark the badge text as user-edited so the topic field stops overwriting it
 const badgeTextInput = document.getElementById('badgeText');
