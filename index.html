@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_48 — Editor: removed Audio + Video B-roll sections; Text & Image overlays are now directly manipulable on the preview (drag to move, drag bottom-right handle to resize, ✕ badge / Delete key to remove, double-click text to edit); side sliders stay synced. Renamed the action button to "Save" (re-renders the adjusted MP4 → save modal). Includes v3_47 sheet-row fix, v3_46 optional STT, v3_45 per-mode voice, v3_44 upload popup, v3_43 whiteboard de-prime. -->
+<!-- Manim Studio v38_18_3_50 — Image gen throttling to beat 429 quota: ~7s spacing between requests, 2 auto-retry rounds over failed scenes with a 30s cooldown, bounded in-request 429 waits (no infinite hang), and live storyboard refresh as each image lands. Includes v3_49 per-scene regen button, v3_48 editor direct-manipulation, v3_47 sheet-row fix, v3_45 per-mode voice, v3_44 upload popup, v3_43 whiteboard de-prime. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2422,25 +2422,54 @@ function realignScenesToKaraoke(scenes, wordTimings, totalDuration) {
 
 // Generate one image per scene. Cached per (scene, videoStyle) — if the user
 // switches style, images are regenerated with the new prompt template.
+// Spacing + retry tuning to stay under Vertex/Imagen per-minute quota (429s).
+const IMAGE_GEN_SPACING_MS = 7000;         // gap between image requests
+const IMAGE_GEN_RETRY_ROUNDS = 2;          // extra passes over failed scenes
+const IMAGE_GEN_RETRY_COOLDOWN_MS = 30000; // wait before each retry round (quota reset)
+function sleepMs(ms) { return new Promise(r => setTimeout(r, ms)); }
+
 async function generateSceneImages(scenes, onStatus = () => {}) {
-  let succeeded = 0, failed = 0;
-  for (let i = 0; i < scenes.length; i++) {
-    const scene = scenes[i];
-    if (scene.imageDataURL && scene.imageStyle === videoStyle) { succeeded++; continue; }
-    onStatus(`Rendering scene ${i + 1}/${scenes.length}: "${scene.imagePrompt}"…`);
-    try {
-      const dataURL = await generateImageForPrompt(scene, onStatus);
-      scene.imageDataURL = dataURL;
-      scene.imageStyle = videoStyle;
-      scene.imgEl = null;
-      persistLandscapeScenes();
-      succeeded++;
-    } catch (e) {
-      console.warn('[scene image]', scene.imagePrompt, e.message);
-      failed++;
+  const needsImage = (s) => !(s.imageDataURL && s.imageStyle === videoStyle);
+  const total = scenes.length;
+  let succeeded = scenes.filter(s => !needsImage(s)).length;
+  let pending = scenes.filter(needsImage);
+
+  const refresh = () => { try { if (typeof window.__refreshStoryboard === 'function') window.__refreshStoryboard(); } catch (e) {} };
+
+  // Pass 0, then up to IMAGE_GEN_RETRY_ROUNDS extra passes over whatever still failed.
+  for (let round = 0; round <= IMAGE_GEN_RETRY_ROUNDS; round++) {
+    if (pending.length === 0) break;
+    if (round > 0) {
+      onStatus(`Chờ ${IMAGE_GEN_RETRY_COOLDOWN_MS / 1000}s cho quota hồi rồi thử lại ${pending.length} ảnh lỗi (vòng ${round})…`);
+      await sleepMs(IMAGE_GEN_RETRY_COOLDOWN_MS);
     }
+    const stillFailed = [];
+    for (let i = 0; i < pending.length; i++) {
+      const scene = pending[i];
+      const sceneNum = scenes.indexOf(scene) + 1;
+      onStatus(`${round > 0 ? `Retry ${round} — ` : ''}Scene ${sceneNum}/${total} (${succeeded}/${total} done): "${scene.imagePrompt}"…`);
+      try {
+        const dataURL = await generateImageForPrompt(scene, onStatus);
+        scene.imageDataURL = dataURL;
+        scene.imageStyle = videoStyle;
+        scene.imgEl = null;
+        persistLandscapeScenes();
+        succeeded++;
+        refresh();  // show the new image in the storyboard immediately
+      } catch (e) {
+        console.warn('[scene image]', scene.imagePrompt, e.message);
+        stillFailed.push(scene);
+      }
+      // Breathing room before the next request so we don't burst past the quota.
+      if (i < pending.length - 1) {
+        onStatus(`Chờ ${IMAGE_GEN_SPACING_MS / 1000}s (tránh quota)… (${succeeded}/${total} done)`);
+        await sleepMs(IMAGE_GEN_SPACING_MS);
+      }
+    }
+    pending = stillFailed;
   }
-  return { succeeded, failed };
+
+  return { succeeded, failed: pending.length };
 }
 
 // Generalized image gen — accepts a full scene object so the template can
@@ -2450,6 +2479,7 @@ async function generateImageForPrompt(sceneOrPrompt, onStatus = () => {}) {
   const token = await getVertexAccessToken();
   const prompt = getIllustrationStylePrompt(sceneOrPrompt);
   let lastErr;
+  let quotaWaits = 0;   // bound in-request 429 waits; outer retry rounds handle the rest
   for (let i = workingImageModelIdx; i < IMAGE_GEN_MODELS.length; i++) {
     const model = IMAGE_GEN_MODELS[i];
     try {
@@ -2465,8 +2495,10 @@ async function generateImageForPrompt(sceneOrPrompt, onStatus = () => {}) {
       const is404 = /HTTP 404|not found|Publisher model/i.test(e.message);
       const is429 = /HTTP 429|quota/i.test(e.message);
       if (is429) {
-        const wait = 25000;
-        onStatus(`Quota hit — waiting ${wait/1000}s…`);
+        if (quotaWaits >= 1) throw e;   // give up on this call; let the caller cool down + retry
+        quotaWaits++;
+        const wait = 20000;
+        onStatus(`Quota hit — waiting ${wait / 1000}s…`);
         await new Promise(r => setTimeout(r, wait));
         i--;
         continue;
@@ -3967,11 +3999,38 @@ window.addEventListener('DOMContentLoaded', () => {
       };
       wrap.appendChild(rm);
 
+      // Per-scene regenerate — re-gen just this one image (for failed / missing / bad ones)
+      const regen = document.createElement('button');
+      regen.textContent = '↻';
+      regen.title = scene.imageDataURL ? 'Gen lại ảnh này' : 'Gen ảnh cho scene này';
+      regen.style.cssText = 'position:absolute;top:4px;right:26px;background:rgba(0,0,0,0.7);color:#c8ff2e;border:none;border-radius:3px;width:18px;height:18px;font-size:11px;cursor:pointer;line-height:1;font-weight:700';
+      regen.onclick = async () => {
+        if (regen.disabled) return;
+        regen.disabled = true; rm.disabled = true;
+        regen.textContent = '⏳'; regen.title = 'Đang gen…';
+        try {
+          const dataURL = await generateImageForPrompt(scene, () => {});
+          scene.imageDataURL = dataURL;
+          scene.imageStyle = videoStyle;
+          scene.imgEl = null;
+          persistLandscapeScenes();
+          renderSceneThumbs();
+          renderActiveCanvas(isPlaying ? (audioContext.currentTime - playStartTime) : 0);
+        } catch (e) {
+          console.warn('[regen scene image]', e.message);
+          alert('Gen lỗi scene ' + (i + 1) + ': ' + e.message);
+          regen.textContent = '↻'; regen.disabled = false; rm.disabled = false;
+        }
+      };
+      wrap.appendChild(regen);
+
       illustThumbs.appendChild(wrap);
     });
   }
   // Alias so existing setStyle() calls still work
   const renderIllustrationThumbs = renderSceneThumbs;
+  // Expose so the (module-level) throttled image generator can refresh thumbs live
+  window.__refreshStoryboard = renderSceneThumbs;
 
   function setIllustStatus(msg, kind) {
     if (!illustStatus) return;
