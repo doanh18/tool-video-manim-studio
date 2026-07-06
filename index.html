@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_50 — Image gen throttling to beat 429 quota: ~7s spacing between requests, 2 auto-retry rounds over failed scenes with a 30s cooldown, bounded in-request 429 waits (no infinite hang), and live storyboard refresh as each image lands. Includes v3_49 per-scene regen button, v3_48 editor direct-manipulation, v3_47 sheet-row fix, v3_45 per-mode voice, v3_44 upload popup, v3_43 whiteboard de-prime. -->
+<!-- Manim Studio v38_18_3_71 — Crop is now a proper interactive tool: 8 draggable handles (4 corners + 4 edges) shown as blue squares, drag any of them to resize, drag inside to move the box, drag outside for a fresh box; rule-of-thirds guides + hover cursors. Live pixel-dimension label. (Full editor with text/image overlays from v3_70.) -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -45,6 +45,8 @@
     align-items: center;
     padding: 0 18px;
     gap: 20px;
+    position: relative;
+    z-index: 10001;
   }
   .logo {
     font-family: 'Instrument Serif', serif;
@@ -238,7 +240,29 @@
   .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
 
   /* OPTIONS */
-  .opt-row { display: grid; grid-template-columns: 30px 1fr 28px; gap: 8px; margin-bottom: 5px; }
+  .opt-row { display: grid; grid-template-columns: 30px 1fr 28px 22px; gap: 8px; margin-bottom: 5px; }
+  .opt-remove {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+  }
+  .opt-remove:hover { color: #ff6b6b; border-color: #ff6b6b; }
+  .opt-add-btn {
+    width: 100%; margin-top: 4px;
+    background: transparent;
+    border: 1px dashed var(--border);
+    border-radius: 5px;
+    color: var(--text-faint);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.5px;
+    padding: 7px; cursor: pointer;
+  }
+  .opt-add-btn:hover { border-color: var(--accent); color: var(--accent); }
   .opt-letter {
     font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
@@ -1213,7 +1237,7 @@
 </div>
 
 <!-- ===== Drive folder destination popup (asked before every upload) ===== -->
-<div class="save-modal-backdrop" id="driveLinkModal" style="z-index:10001">
+<div class="save-modal-backdrop" id="driveLinkModal" style="z-index:10020">
   <div class="save-modal" style="max-width:520px">
     <div class="save-modal-inner">
       <button class="close-x" id="driveLinkClose" title="Close">×</button>
@@ -1226,6 +1250,90 @@
         <button class="action-btn" id="driveLinkCancel" style="justify-content:center">Huỷ</button>
         <button class="action-btn primary" id="driveLinkDone" style="justify-content:center">Done → Upload</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CHEATSHEET TAB (a real page — shown when the Cheatsheet tab is active) ===== -->
+<div id="cheatsheetView" style="display:none;position:fixed;top:56px;left:0;right:0;bottom:0;z-index:500;background:#0a0c11;flex-direction:column;color:#e6e8ec;font-family:'Inter Tight',sans-serif">
+  <div class="editor-header">
+    <h2>🗂 Cheatsheet <span class="badge">9:16 PNG</span></h2>
+  </div>
+  <div style="flex:1;overflow:auto;display:flex;gap:22px;padding:24px;box-sizing:border-box;flex-wrap:wrap;align-content:flex-start">
+    <div style="flex:1;min-width:320px;max-width:560px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:150px">
+          <label style="display:block;font-size:11px;letter-spacing:1px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;margin-bottom:6px">TOPIC</label>
+          <input id="cheatsheetTopic" placeholder="vd: Subnetting, Vital Signs…" style="width:100%;box-sizing:border-box;background:#12151b;border:1px solid #2f3542;border-radius:8px;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:10px 12px">
+        </div>
+        <div style="flex:1;min-width:150px">
+          <label style="display:block;font-size:11px;letter-spacing:1px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;margin-bottom:6px">EXAM / NICHE</label>
+          <input id="cheatsheetNiche" placeholder="vd: CCNA, CNA, PMP, GED, DMV…" style="width:100%;box-sizing:border-box;background:#12151b;border:1px solid #2f3542;border-radius:8px;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:10px 12px">
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;letter-spacing:1px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;margin-bottom:6px">PROMPT CHEATSHEET (giữ [INSERT TOPIC] & [INSERT EXAM…] — sẽ tự thay bằng Topic/Niche)</label>
+        <textarea id="cheatsheetPrompt" rows="14" placeholder="Dán prompt tạo cheatsheet ở đây…" style="width:100%;box-sizing:border-box;background:#12151b;border:1px solid #2f3542;border-radius:8px;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.5;padding:12px;resize:vertical;min-height:180px"></textarea>
+      </div>
+      <div id="openaiKeyRow">
+        <label style="display:block;font-size:11px;letter-spacing:1px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;margin-bottom:6px">OPENAI API KEY (gpt-image-2)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="openaiKeyInput" type="password" autocomplete="off" placeholder="sk-..." style="flex:1;min-width:180px;box-sizing:border-box;background:#12151b;border:1px solid #2f3542;border-radius:8px;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 12px">
+          <button id="openaiKeySave" style="background:#1c2029;border:1px solid #2f3542;color:#c8ff2e;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;padding:10px 14px;border-radius:8px;cursor:pointer">💾 Lưu key</button>
+          <button id="openaiKeyClear" style="background:#1c2029;border:1px solid #2f3542;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:11px;padding:10px 14px;border-radius:8px;cursor:pointer" title="Xoá key khỏi trình duyệt">✕</button>
+        </div>
+        <div id="openaiKeyStatus" style="font-size:10px;color:#6b7280;font-family:'JetBrains Mono',monospace;margin-top:5px;line-height:1.5">Key lưu trong trình duyệt (localStorage) — không nằm trong code/GitHub. App client-side nên key chỉ an toàn trên máy bạn.</div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button id="cheatsheetGenBtn" style="flex:1;min-width:160px;background:linear-gradient(90deg,#c8ff2e,#a7e625);border:none;color:#0d0f14;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;padding:12px;border-radius:8px;cursor:pointer">✨ Gen cheatsheet (9:16)</button>
+        <button id="cheatsheetDownloadBtn" disabled style="display:none;background:#1c2029;border:1px solid #2f3542;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;padding:12px 16px;border-radius:8px;cursor:pointer;opacity:0.5">⬇ Tải PNG</button>
+      </div>
+      <div id="cheatsheetStatus" style="font-size:11.5px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;min-height:16px;line-height:1.5"></div>
+      <div style="font-size:10.5px;color:#6b7280;font-family:'JetBrains Mono',monospace;line-height:1.6">Tab này độc lập — prompt lưu riêng, không ảnh hưởng video dọc/ngang. Dùng cùng Vertex SA key đã nạp. Ảnh xuất PNG khổ dọc 9:16.</div>
+    </div>
+    <div style="flex:1;min-width:300px;display:flex;align-items:flex-start;justify-content:center">
+      <div style="width:min(360px,90%);aspect-ratio:9/16;background:#06080b;border:1px solid #2f3542;border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+        <img id="cheatsheetImg" alt="" style="width:100%;height:100%;object-fit:contain;display:none">
+        <span id="cheatsheetPlaceholder" style="color:#4b5563;font-family:'JetBrains Mono',monospace;font-size:12px">preview 9:16</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Cheatsheet EDITOR (crop + add text + add image) -->
+<div id="cheatsheetEditView" tabindex="0" style="display:none;position:fixed;inset:0;z-index:10030;background:#06080b;flex-direction:column;color:#e6e8ec;font-family:'Inter Tight',sans-serif;outline:none">
+  <div class="editor-header">
+    <h2>✂️ Edit cheatsheet <span class="badge" id="csEditHint">thêm text/ảnh · kéo di chuyển · góc resize · ✕ xoá</span></h2>
+    <button class="editor-close" id="cheatsheetEditClose">× Đóng</button>
+  </div>
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:16px">
+    <canvas id="cheatsheetCropCanvas" style="max-width:100%;max-height:100%;touch-action:none;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.6)"></canvas>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:center;align-items:center;padding:12px;border-top:1px solid #1c2029;flex-wrap:wrap">
+    <button id="csAddText" style="background:#1c2029;border:1px solid #2f3542;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 14px;border-radius:8px;cursor:pointer">+ Text</button>
+    <label style="background:#1c2029;border:1px solid #2f3542;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 14px;border-radius:8px;cursor:pointer">+ Ảnh<input type="file" id="csAddImage" accept="image/*" style="display:none"></label>
+    <button id="csCropToggle" style="background:#1c2029;border:1px solid #2f3542;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 14px;border-radius:8px;cursor:pointer">✂️ Crop</button>
+    <button id="cropApplyBtn" style="display:none;background:#1c2029;border:1px solid #c8ff2e;color:#c8ff2e;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 14px;border-radius:8px;cursor:pointer">Áp dụng crop</button>
+    <span id="csDimLabel" style="font-size:11px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;padding:0 6px"></span>
+    <span style="flex:1"></span>
+    <button id="csEditSave" style="background:linear-gradient(90deg,#c8ff2e,#a7e625);border:none;color:#0d0f14;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;padding:10px 20px;border-radius:8px;cursor:pointer">💾 Lưu</button>
+    <button id="cropCancelBtn" style="background:#1c2029;border:1px solid #2f3542;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 16px;border-radius:8px;cursor:pointer">Huỷ</button>
+  </div>
+</div>
+
+<!-- Cheatsheet SAVE modal -->
+<div class="save-modal-backdrop" id="cheatsheetSaveModal" style="z-index:10002">
+  <div class="save-modal" style="max-width:440px">
+    <div class="save-modal-inner">
+      <button class="close-x" id="cheatsheetSaveClose" title="Close">×</button>
+      <h3>💾 Lưu cheatsheet</h3>
+      <div class="subtitle">Ảnh 9:16 vừa tạo — chọn cách lưu</div>
+      <div class="save-modal-actions" style="flex-direction:column;gap:8px;margin-top:12px">
+        <button class="action-btn" id="csSaveDevice" style="justify-content:center">⬇ Lưu về máy (PNG)</button>
+        <button class="action-btn" id="csSaveDrive" style="justify-content:center">☁️ Upload Drive + ghi Sheet (cột "file ảnh")</button>
+        <button class="action-btn" id="csSaveEdit" style="justify-content:center" title="Crop / cắt ảnh">✂️ Edit — crop/cắt ảnh</button>
+      </div>
+      <div class="status-line" id="cheatsheetSaveStatus"></div>
     </div>
   </div>
 </div>
@@ -1324,6 +1432,7 @@
   <div style="display:flex;align-items:center;gap:0;background:#0d0f14;border:1px solid #2f3542;border-radius:6px;overflow:hidden">
     <button class="btn" id="modePortrait" style="border-radius:0;border:none;background:linear-gradient(90deg,#c8ff2e,#a7e625);color:#0d0f14" title="Portrait 9:16 (TikTok / Reels)">▯ 9:16</button>
     <button class="btn" id="modeLandscape" style="border-radius:0;border:none;background:transparent;color:#b9bfc9" title="Landscape 16:9 (YouTube / Facebook)">▭ 16:9</button>
+    <button class="btn" id="modeCheatsheet" style="border-radius:0;border:none;background:transparent;color:#b9bfc9" title="Cheatsheet (ảnh infographic 9:16)">🗂 Cheatsheet</button>
   </div>
   <button class="btn-accent btn" id="exportMp4Btn">💾 SAVE</button>
 </div>
@@ -1403,6 +1512,37 @@
         <div class="field">
           <label class="label" id="qTextLabel">Question Text</label>
           <input class="input" id="qText" value="The cube of 8 is">
+        </div>
+        <div class="field portrait-only">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text-faint);font-family:'JetBrains Mono',monospace" title="Màu chữ câu hỏi">
+              MÀU CÂU HỎI <input type="color" id="qTextColor" value="#111111" style="width:34px;height:28px;padding:0;border:1px solid var(--border,#333);border-radius:5px;background:none;cursor:pointer">
+            </label>
+          </div>
+        </div>
+
+        <div class="field portrait-only">
+          <label class="label">Ảnh / Video nền (phủ full khung, thay nền giấy)</label>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label class="btn" style="flex:1;min-width:150px;text-align:center;padding:9px;cursor:pointer;background:#1c2029;border:1px dashed var(--border);border-radius:6px;font-size:11.5px">
+              🖼️ Upload ảnh / video nền
+              <input type="file" id="bgMediaInput" accept="image/*,video/*" style="display:none">
+            </label>
+            <button type="button" id="bgMediaClear" class="btn" style="padding:9px 12px;font-size:11px" title="Bỏ nền, quay lại nền giấy">✕ Bỏ nền</button>
+          </div>
+          <div id="bgMediaStatus" style="font-size:10.5px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;margin-top:5px;min-height:14px"></div>
+        </div>
+
+        <div class="field portrait-only">
+          <label class="label">Ảnh minh hoạ dưới câu hỏi (hiện xuyên suốt video)</label>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label class="btn" style="flex:1;min-width:150px;text-align:center;padding:9px;cursor:pointer;background:#1c2029;border:1px dashed var(--border);border-radius:6px;font-size:11.5px">
+              🧩 Upload ảnh câu hỏi
+              <input type="file" id="qImageInput" accept="image/*" style="display:none">
+            </label>
+            <button type="button" id="qImageClear" class="btn" style="padding:9px 12px;font-size:11px" title="Bỏ ảnh câu hỏi">✕ Bỏ ảnh</button>
+          </div>
+          <div id="qImageStatus" style="font-size:10.5px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;margin-top:5px;min-height:14px"></div>
         </div>
         <div class="field portrait-only">
           <label class="label">Header Title (tên trên cùng — đổi được)</label>
@@ -1509,28 +1649,36 @@
             </select>
           </div>
         </div>
+
         <div class="portrait-only">
-          <label class="label">Answer Options · Click ◉ to mark correct</label>
-          <div class="opt-row">
-            <div class="opt-letter">A</div>
-            <input class="input" value="16">
-            <div class="opt-check">◯</div>
+          <label class="label">Answer Options · Click ◉ to mark correct (chọn nhiều được)</label>
+          <div id="optRows">
+            <div class="opt-row">
+              <div class="opt-letter">A</div>
+              <input class="input" value="16">
+              <div class="opt-check">◯</div>
+              <button type="button" class="opt-remove" title="Xoá đáp án">✕</button>
+            </div>
+            <div class="opt-row">
+              <div class="opt-letter">B</div>
+              <input class="input" value="64">
+              <div class="opt-check">◯</div>
+              <button type="button" class="opt-remove" title="Xoá đáp án">✕</button>
+            </div>
+            <div class="opt-row">
+              <div class="opt-letter">C</div>
+              <input class="input" value="128">
+              <div class="opt-check">◯</div>
+              <button type="button" class="opt-remove" title="Xoá đáp án">✕</button>
+            </div>
+            <div class="opt-row is-answer">
+              <div class="opt-letter">D</div>
+              <input class="input" value="512">
+              <div class="opt-check">◉</div>
+              <button type="button" class="opt-remove" title="Xoá đáp án">✕</button>
+            </div>
           </div>
-          <div class="opt-row">
-            <div class="opt-letter">B</div>
-            <input class="input" value="64">
-            <div class="opt-check">◯</div>
-          </div>
-          <div class="opt-row">
-            <div class="opt-letter">C</div>
-            <input class="input" value="128">
-            <div class="opt-check">◯</div>
-          </div>
-          <div class="opt-row is-answer">
-            <div class="opt-letter">D</div>
-            <input class="input" value="512">
-            <div class="opt-check">◉</div>
-          </div>
+          <button type="button" class="opt-add-btn" id="addOptBtn">+ Thêm đáp án</button>
 
           <!-- GEN SCRIPT FROM USER-PROVIDED Q&A -->
           <div style="margin-top:14px;padding:12px;background:rgba(167,139,250,0.07);border:1px solid rgba(167,139,250,0.3);border-radius:6px">
@@ -1575,6 +1723,14 @@
           </div>
         </div>
         <button class="add-step" onclick="addStep()">+ ADD STEP</button>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border,#2f3542)">
+          <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text-faint);font-family:'JetBrains Mono',monospace" title="Màu chữ step (lời giải)">
+            MÀU STEP <input type="color" id="stepColor" value="#d92027" style="width:34px;height:28px;padding:0;border:1px solid var(--border,#333);border-radius:5px;background:none;cursor:pointer">
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text-faint);font-family:'JetBrains Mono',monospace;cursor:pointer" title="Bật/tắt hiển thị step (lời giải)">
+            <input type="checkbox" id="showStepsToggle" checked style="width:15px;height:15px;cursor:pointer"> HIỆN STEP
+          </label>
+        </div>
       </div>
     </div>
 
@@ -2586,15 +2742,18 @@ let workingImageModelIdx = 0;
 // Last error message from any image gen attempt — surfaced in the final status
 let lastImageGenError = '';
 
-async function tryImageModel(model, prompt, token) {
+async function tryImageModel(model, prompt, token, aspectRatio = '16:9') {
   if (model.kind === 'gemini') {
     // Gemini image gen: same generateContent endpoint, needs responseModalities
+    const gPrompt = aspectRatio === '9:16'
+      ? prompt + '\n\nOUTPUT FORMAT: tall vertical 9:16 portrait image (fills a phone screen top to bottom).'
+      : prompt;
     const url = `https://us-central1-aiplatform.googleapis.com/v1/projects/${SVC_ACC.project_id}/locations/us-central1/publishers/google/models/${model.id}:generateContent`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        contents: [{ role: 'user', parts: [{ text: gPrompt }] }],
         generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
       })
     });
@@ -2630,7 +2789,7 @@ async function tryImageModel(model, prompt, token) {
           }],
           parameters: {
             sampleCount: 1,
-            aspectRatio: '16:9',
+            aspectRatio: aspectRatio,
             safetyFilterLevel: filterLevel,
             personGeneration: 'allow_adult'
           }
@@ -2657,6 +2816,33 @@ async function tryImageModel(model, prompt, token) {
   }
   throw new Error('Unknown image model kind: ' + model.kind);
 }
+
+// Isolated 9:16 image generator for the Cheatsheet tab (does not touch video state).
+// OpenAI gpt-image-2 — OpenAI's latest image model, excellent at legible in-image text.
+// Key is read from the user-entered field (localStorage), never hardcoded.
+async function generateCheatsheetImageOpenAI(prompt, apiKey, onStatus = () => {}) {
+  onStatus('Đang gen bằng gpt-image-2 (OpenAI)…');
+  const res = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-image-2',
+      prompt: prompt,
+      size: '1024x1536',   // tall portrait
+      n: 1
+    })
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error('OpenAI HTTP ' + res.status + ': ' + t.slice(0, 240));
+  }
+  const data = await res.json();
+  const b64 = data && data.data && data.data[0] && data.data[0].b64_json;
+  if (!b64) throw new Error('OpenAI trả về không có ảnh.');
+  return 'data:image/png;base64,' + b64;
+}
+
+// Cheatsheet uses OpenAI gpt-image-2 only (see generateCheatsheetImageOpenAI above).
 
 async function generateSketchIllustration(concept, onStatus = () => {}) {
   const cacheKey = `${videoStyle}:${concept}`;
@@ -3069,16 +3255,693 @@ document.querySelectorAll('.voice-chip').forEach(c => {
 });
 
 // ===== OPTION SELECT =====
-document.querySelectorAll('.opt-row').forEach(r => {
-  r.querySelector('.opt-check').onclick = () => {
-    document.querySelectorAll('.opt-row').forEach(x => {
-      x.classList.remove('is-answer');
-      x.querySelector('.opt-check').textContent = '◯';
-    });
-    r.classList.add('is-answer');
-    r.querySelector('.opt-check').textContent = '◉';
-  };
+// ---- Answer options: dynamic add/remove + MULTI-correct ----
+// Rows live in #optRows. The DOM is the source of truth (collectRenderState /
+// collectFormState already read .opt-row). Multiple options can be marked correct.
+const optRowsEl = document.getElementById('optRows');
+
+function relabelOpts() {
+  optRowsEl.querySelectorAll('.opt-row').forEach((r, i) => {
+    const l = r.querySelector('.opt-letter');
+    if (l) l.textContent = String.fromCharCode(65 + i);
+  });
+}
+function readOptData() {
+  return Array.from(optRowsEl.querySelectorAll('.opt-row')).map(r => ({
+    text: r.querySelector('input.input')?.value || '',
+    isAnswer: r.classList.contains('is-answer')
+  }));
+}
+function makeOptRow(text, isAnswer) {
+  const row = document.createElement('div');
+  row.className = 'opt-row' + (isAnswer ? ' is-answer' : '');
+  const letter = document.createElement('div'); letter.className = 'opt-letter';
+  const inp = document.createElement('input'); inp.className = 'input'; inp.value = text || '';
+  const chk = document.createElement('div'); chk.className = 'opt-check'; chk.textContent = isAnswer ? '◉' : '◯';
+  const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'opt-remove'; rm.title = 'Xoá đáp án'; rm.textContent = '✕';
+  row.append(letter, inp, chk, rm);
+  return row;
+}
+function rebuildOptRows(data) {
+  optRowsEl.innerHTML = '';
+  (data && data.length ? data : [{ text: '', isAnswer: false }, { text: '', isAnswer: false }])
+    .forEach(o => optRowsEl.appendChild(makeOptRow(o.text, o.isAnswer)));
+  relabelOpts();
+}
+
+// One delegated handler for check-toggle (multi) + remove
+optRowsEl.addEventListener('click', (e) => {
+  const chk = e.target.closest('.opt-check');
+  const rm = e.target.closest('.opt-remove');
+  if (chk) {
+    const row = chk.closest('.opt-row');
+    const on = row.classList.toggle('is-answer');
+    chk.textContent = on ? '◉' : '◯';
+    syncEditor();
+    setTimeout(scheduleSaveState, 30);
+  } else if (rm) {
+    if (optRowsEl.querySelectorAll('.opt-row').length <= 2) { return; }  // keep ≥2
+    rm.closest('.opt-row').remove();
+    relabelOpts();
+    syncEditor();
+    setTimeout(scheduleSaveState, 30);
+  }
 });
+optRowsEl.addEventListener('input', (e) => {
+  if (e.target.matches('input.input')) { syncEditor(); scheduleSaveState(); }
+});
+document.getElementById('addOptBtn').addEventListener('click', () => {
+  const data = readOptData();
+  if (data.length >= 8) { alert('Tối đa 8 đáp án'); return; }
+  optRowsEl.appendChild(makeOptRow('', false));
+  relabelOpts();
+  syncEditor();
+  scheduleSaveState();
+});
+
+// ---- Background media (image/video) + Question image (portrait) ----
+(function wireQuizMedia() {
+  const rerender = () => renderActiveCanvas(isPlaying ? (audioContext.currentTime - playStartTime) : 0);
+  const bgIn = document.getElementById('bgMediaInput');
+  const bgClear = document.getElementById('bgMediaClear');
+  const bgStatus = document.getElementById('bgMediaStatus');
+  const qIn = document.getElementById('qImageInput');
+  const qClear = document.getElementById('qImageClear');
+  const qStatus = document.getElementById('qImageStatus');
+
+  if (bgIn) bgIn.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    if (RS.bgMediaEl && RS.bgMediaEl.tagName === 'VIDEO') { try { RS.bgMediaEl.pause(); } catch (_) {} }
+    if (RS._bgMediaUrl) URL.revokeObjectURL(RS._bgMediaUrl);
+    const url = URL.createObjectURL(f); RS._bgMediaUrl = url;
+    bgStatus.textContent = '⏳ Đang nạp…';
+    if (f.type.startsWith('video/')) {
+      const v = document.createElement('video');
+      v.src = url; v.muted = true; v.loop = true; v.playsInline = true;
+      v.addEventListener('loadeddata', () => {
+        RS.bgMediaEl = v; RS.bgMediaType = 'video';
+        v.play().catch(() => {});
+        bgStatus.textContent = '✓ Video nền: ' + f.name;
+        rerender();
+      }, { once: true });
+      v.load();
+    } else {
+      const img = new Image();
+      img.onload = () => { RS.bgMediaEl = img; RS.bgMediaType = 'image'; bgStatus.textContent = '✓ Ảnh nền: ' + f.name; rerender(); };
+      img.onerror = () => { bgStatus.textContent = '✗ Không đọc được ảnh'; };
+      img.src = url;
+    }
+  });
+  if (bgClear) bgClear.addEventListener('click', () => {
+    if (RS.bgMediaEl && RS.bgMediaEl.tagName === 'VIDEO') { try { RS.bgMediaEl.pause(); } catch (_) {} }
+    if (RS._bgMediaUrl) { URL.revokeObjectURL(RS._bgMediaUrl); RS._bgMediaUrl = null; }
+    RS.bgMediaEl = null; RS.bgMediaType = null;
+    if (bgIn) bgIn.value = ''; if (bgStatus) bgStatus.textContent = '';
+    rerender();
+  });
+
+  if (qIn) qIn.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    if (RS._qImageUrl) URL.revokeObjectURL(RS._qImageUrl);
+    const url = URL.createObjectURL(f); RS._qImageUrl = url;
+    qStatus.textContent = '⏳ Đang nạp…';
+    const img = new Image();
+    img.onload = () => { RS.qImageEl = img; qStatus.textContent = '✓ Ảnh câu hỏi: ' + f.name; rerender(); };
+    img.onerror = () => { qStatus.textContent = '✗ Không đọc được ảnh'; };
+    img.src = url;
+  });
+  if (qClear) qClear.addEventListener('click', () => {
+    if (RS._qImageUrl) { URL.revokeObjectURL(RS._qImageUrl); RS._qImageUrl = null; }
+    RS.qImageEl = null;
+    if (qIn) qIn.value = ''; if (qStatus) qStatus.textContent = '';
+    rerender();
+  });
+})();
+
+// Top-level tab switch: video (9:16/16:9) ↔ cheatsheet page
+let currentTab = 'video';
+function setTab(tab) {
+  currentTab = tab;
+  const mainEl = document.querySelector('.main');
+  const cheat = document.getElementById('cheatsheetView');
+  const bP = document.getElementById('modePortrait');
+  const bL = document.getElementById('modeLandscape');
+  const bC = document.getElementById('modeCheatsheet');
+  const exportMp3 = document.getElementById('exportBtn');   // video-only
+  const exportMp4 = document.getElementById('exportMp4Btn'); // SAVE — kept, context-aware
+  const ACTIVE = 'linear-gradient(90deg,#c8ff2e,#a7e625)';
+  if (tab === 'cheatsheet') {
+    if (mainEl) mainEl.style.display = 'none';
+    if (cheat) cheat.style.display = 'flex';
+    if (exportMp3) exportMp3.style.display = 'none';   // hide MP3 (video-only)
+    if (exportMp4) exportMp4.style.display = '';        // keep SAVE → saves the cheatsheet PNG
+    if (bC) { bC.style.background = ACTIVE; bC.style.color = '#0d0f14'; }
+    if (bP) { bP.style.background = 'transparent'; bP.style.color = '#b9bfc9'; }
+    if (bL) { bL.style.background = 'transparent'; bL.style.color = '#b9bfc9'; }
+  } else {
+    if (cheat) cheat.style.display = 'none';
+    if (mainEl) mainEl.style.display = '';
+    if (exportMp3) exportMp3.style.display = '';
+    if (exportMp4) exportMp4.style.display = '';
+    if (bC) { bC.style.background = 'transparent'; bC.style.color = '#b9bfc9'; }
+    // 9:16 / 16:9 active button styling is handled by setMode()
+  }
+}
+
+// Cheatsheet: last generated PNG + save handler (used by the topbar SAVE button)
+let cheatsheetLastDataURL = null;
+function downloadCheatsheetPNG() {
+  if (!cheatsheetLastDataURL) { alert('Gen cheatsheet trước đã (bấm ✨ Gen).'); return; }
+  const ext = (cheatsheetLastDataURL.match(/^data:image\/(\w+)/) || [, 'png'])[1];
+  const a = document.createElement('a');
+  a.href = cheatsheetLastDataURL;
+  a.download = 'cheatsheet_' + Date.now() + '.' + ext;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// ===== Cheatsheet SAVE modal (Save to device / Upload to Drive + log to Sheet) =====
+const CHEATSHEET_SHEET_GID = 665236143;  // tab in the same spreadsheet as GSHEETS_ID
+
+function csSaveStatus(msg, cls) {
+  const el = document.getElementById('cheatsheetSaveStatus');
+  if (!el) return;
+  el.innerHTML = msg || '';
+  el.style.color = cls === 'err' ? '#ff6b6b' : cls === 'ok' ? '#c8ff2e' : '#9aa0ac';
+}
+function showCheatsheetSaveModal() {
+  if (!cheatsheetLastDataURL) { alert('Gen cheatsheet trước đã (bấm ✨ Gen).'); return; }
+  csSaveStatus('');
+  const m = document.getElementById('cheatsheetSaveModal');
+  if (m) m.classList.add('show');
+}
+function hideCheatsheetSaveModal() {
+  const m = document.getElementById('cheatsheetSaveModal');
+  if (m) m.classList.remove('show');
+}
+
+// Write the Drive image link into the "file ảnh" column of tab gid=665236143.
+async function logCheatsheetToSheet(imageLink, token) {
+  // 1) resolve gid → sheet title
+  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GSHEETS_ID}?fields=sheets.properties(sheetId,title)`, { headers: { 'Authorization': `Bearer ${token}` } });
+  if (!metaRes.ok) throw new Error('Sheet meta HTTP ' + metaRes.status + ': ' + (await metaRes.text()).slice(0, 180));
+  const meta = await metaRes.json();
+  const sheet = (meta.sheets || []).find(s => s.properties && s.properties.sheetId === CHEATSHEET_SHEET_GID);
+  if (!sheet) throw new Error('Không thấy tab gid ' + CHEATSHEET_SHEET_GID + ' trong spreadsheet.');
+  const title = sheet.properties.title;
+  const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+
+  // 2) read the sheet
+  const readRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GSHEETS_ID}/values/${encodeURIComponent(q(title) + '!A:AZ')}`, { headers: { 'Authorization': `Bearer ${token}` } });
+  if (!readRes.ok) throw new Error('Sheet read HTTP ' + readRes.status + ': ' + (await readRes.text()).slice(0, 180));
+  const values = (await readRes.json()).values || [];
+  if (!values.length) throw new Error('Tab "' + title + '" trống hoặc không đọc được header.');
+  const headers = values[0];
+  const norm = (h) => String(h == null ? '' : h).trim().toLowerCase().replace(/\s+/g, ' ');
+  const hnorm = headers.map(norm);
+  // Pass 1: the explicit "file ảnh" column
+  let colIdx = hnorm.findIndex(h =>
+    h === 'file ảnh' || h === 'file anh' || h === 'link ảnh' || h === 'link anh' ||
+    (h.includes('file') && (h.includes('ảnh') || h.includes('anh'))));
+  // Pass 2: fallback to a generic image column
+  if (colIdx < 0) colIdx = hnorm.findIndex(h =>
+    h === 'image' || h === 'img' || h === 'ảnh' || h === 'anh' || h === 'file image' || h.includes('image'));
+  if (colIdx < 0) throw new Error('Không thấy cột "file ảnh". Header đang có: [' + headers.map(String).join(' | ') + ']');
+
+  // 3) next row = one past the last row that has content in that column
+  let last = 1;
+  for (let r = 1; r < values.length; r++) {
+    const v = values[r] && values[r][colIdx];
+    if (v != null && String(v).trim() !== '') last = r + 1;
+  }
+  const nextRow = last + 1;
+
+  // 4) write the link
+  const colA1 = (idx) => { let s = '', n = idx + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+  const range = q(title) + '!' + colA1(colIdx) + nextRow;
+  const updRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GSHEETS_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: [[imageLink]] })
+  });
+  if (!updRes.ok) throw new Error('Sheet write HTTP ' + updRes.status + ': ' + (await updRes.text()).slice(0, 180));
+  return { row: nextRow, title, col: colA1(colIdx) };
+}
+
+async function uploadCheatsheetToDriveAndSheet() {
+  if (!cheatsheetLastDataURL) { csSaveStatus('✗ Gen ảnh trước đã.', 'err'); return; }
+  let folderId;
+  try { folderId = await promptDriveFolder(); }
+  catch (e) { if (e && e.message === '__cancel__') { csSaveStatus('Đã huỷ.'); return; } csSaveStatus('✗ ' + e.message, 'err'); return; }
+  try {
+    csSaveStatus('⏳ Google auth…');
+    await ensureGoogleAuth();
+    csSaveStatus('⏳ Cho phép Drive & Sheets…');
+    const token = await requestGoogleAccessToken();
+    csSaveStatus('⏳ Upload ảnh lên Drive…');
+    const blob = await (await fetch(cheatsheetLastDataURL)).blob();
+    const fname = 'cheatsheet_' + Date.now() + '.png';
+    const uploaded = await uploadBlobToDrive(blob, fname, folderId, token);
+    const link = uploaded.webViewLink || ('https://drive.google.com/file/d/' + uploaded.id + '/view');
+    csSaveStatus('⏳ Ghi link vào Sheet (cột "file ảnh")…');
+    const { row } = await logCheatsheetToSheet(link, token);
+    const sheetUrl = `https://docs.google.com/spreadsheets/d/${GSHEETS_ID}/edit#gid=${CHEATSHEET_SHEET_GID}`;
+    csSaveStatus(`✓ Xong · dòng ${row}. <a href="${link}" target="_blank" rel="noopener">Mở Drive</a> · <a href="${sheetUrl}" target="_blank" rel="noopener">Mở Sheet</a>`, 'ok');
+  } catch (e) {
+    console.error('[cheatsheet upload]', e);
+    csSaveStatus('✗ ' + e.message, 'err');
+  }
+}
+
+(function wireCheatsheetSaveModal() {
+  const m = document.getElementById('cheatsheetSaveModal');
+  if (!m) return;
+  const close = document.getElementById('cheatsheetSaveClose');
+  const dev = document.getElementById('csSaveDevice');
+  const drive = document.getElementById('csSaveDrive');
+  const edit = document.getElementById('csSaveEdit');
+  if (close) close.addEventListener('click', hideCheatsheetSaveModal);
+  m.addEventListener('click', (e) => { if (e.target === m) hideCheatsheetSaveModal(); });
+  if (dev) dev.addEventListener('click', () => { downloadCheatsheetPNG(); hideCheatsheetSaveModal(); });
+  if (drive) drive.addEventListener('click', uploadCheatsheetToDriveAndSheet);
+  if (edit) edit.addEventListener('click', () => { hideCheatsheetSaveModal(); openCheatsheetCropEditor(); });
+})();
+
+// ===== Cheatsheet EDITOR: add text/image overlays + crop, flattened at full resolution =====
+(function wireCheatsheetEditor() {
+  const view = document.getElementById('cheatsheetEditView');
+  const canvas = document.getElementById('cheatsheetCropCanvas');
+  if (!view || !canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dimLabel = document.getElementById('csDimLabel');
+  const applyCropBtn = document.getElementById('cropApplyBtn');
+
+  let img = null, baseW = 0, baseH = 0, fit = 1;
+  let layers = [];        // {type:'text'|'image', ...} positions as fractions of source
+  let selId = null, drag = null, idSeq = 0;
+  let cropMode = false, cropRect = null;   // cropRect in canvas (display) coords
+  const HANDLE = 14, BADGE = 11;
+
+  // ---- rendering ----
+  function drawText(c, layer, W, H) {
+    const text = String(layer.text == null ? '' : layer.text);
+    const x = layer.xPct * W, y = layer.yPct * H;
+    const fs = layer.fontSize * (W / baseW);
+    c.save();
+    c.font = `${layer.bold ? 700 : 400} ${fs}px "Inter Tight","Helvetica",sans-serif`;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    const lines = wrapTextLines(c, text, (layer.wrapPct || 0.9) * W);
+    const lineH = fs * 1.25;
+    let tw = 0; for (const ln of lines) tw = Math.max(tw, c.measureText(ln).width);
+    const th = lineH * lines.length, padX = fs * 0.55, padY = fs * 0.35;
+    const boxW = tw + padX * 2, boxH = th + padY * 2;
+    if (layer.bgAlpha > 0 && (tw > 0 || lines.length > 1)) {
+      c.globalAlpha = layer.bgAlpha; c.fillStyle = layer.bgColor;
+      roundRectPath(c, x - boxW / 2, y - boxH / 2, boxW, boxH, Math.min(boxH * 0.5, fs * 0.9));
+      c.fill(); c.globalAlpha = 1;
+    }
+    c.fillStyle = layer.color;
+    const firstY = y - th / 2 + lineH / 2;
+    for (let i = 0; i < lines.length; i++) c.fillText(lines[i], x, firstY + i * lineH);
+    c.restore();
+  }
+  function composite(c, W, H) {
+    c.clearRect(0, 0, W, H);
+    if (img) c.drawImage(img, 0, 0, W, H);
+    for (const l of layers) {
+      if (l.type === 'text') drawText(c, l, W, H);
+      else if (l.type === 'image' && l.imgEl) {
+        const iw = l.widthPct * W, ih = iw * (l.naturalRatio || 1);
+        c.drawImage(l.imgEl, l.xPct * W - iw / 2, l.yPct * H - ih / 2, iw, ih);
+      }
+    }
+  }
+  function layerBox(l, W, H) {
+    if (l.type === 'text') {
+      const fs = l.fontSize * (W / baseW);
+      ctx.save(); ctx.font = `${l.bold ? 700 : 400} ${fs}px "Inter Tight",sans-serif`;
+      const lines = wrapTextLines(ctx, l.text, (l.wrapPct || 0.9) * W);
+      let tw = 0; for (const ln of lines) tw = Math.max(tw, ctx.measureText(ln).width);
+      ctx.restore();
+      const lineH = fs * 1.25, padX = fs * 0.55, padY = fs * 0.35;
+      const bw = Math.max(tw, 8) + padX * 2, bh = lineH * lines.length + padY * 2;
+      const cx = l.xPct * W, cy = l.yPct * H;
+      return { cx, cy, w: bw, h: bh, x: cx - bw / 2, y: cy - bh / 2 };
+    }
+    const w = l.widthPct * W, h = w * (l.naturalRatio || 1);
+    const cx = l.xPct * W, cy = l.yPct * H;
+    return { cx, cy, w, h, x: cx - w / 2, y: cy - h / 2 };
+  }
+  function draw() {
+    composite(ctx, canvas.width, canvas.height);
+    if (cropMode) {
+      const r = cropRect || { x: 0, y: 0, w: canvas.width, h: canvas.height };
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath(); ctx.rect(0, 0, canvas.width, canvas.height); ctx.rect(r.x, r.y, r.w, r.h); ctx.fill('evenodd');
+      ctx.strokeStyle = '#4a90ff'; ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      // thirds guides
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
+      for (let i = 1; i < 3; i++) {
+        ctx.beginPath(); ctx.moveTo(r.x + r.w * i / 3, r.y); ctx.lineTo(r.x + r.w * i / 3, r.y + r.h); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(r.x, r.y + r.h * i / 3); ctx.lineTo(r.x + r.w, r.y + r.h * i / 3); ctx.stroke();
+      }
+      // 8 draggable handles
+      const hs = 6;
+      ctx.fillStyle = '#4a90ff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      cropHandlePoints(r).forEach(pt => { ctx.beginPath(); ctx.rect(pt.x - hs, pt.y - hs, hs * 2, hs * 2); ctx.fill(); ctx.stroke(); });
+      ctx.restore();
+    } else if (selId) {
+      const l = layers.find(x => x.id === selId);
+      if (l) {
+        const b = layerBox(l, canvas.width, canvas.height);
+        ctx.save();
+        ctx.strokeStyle = '#c8ff2e'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+        ctx.strokeRect(b.x, b.y, b.w, b.h); ctx.setLineDash([]);
+        ctx.fillStyle = '#c8ff2e'; ctx.fillRect(b.x + b.w - HANDLE / 2, b.y + b.h - HANDLE / 2, HANDLE, HANDLE);
+        ctx.beginPath(); ctx.arc(b.x + b.w, b.y, BADGE, 0, Math.PI * 2); ctx.fillStyle = '#ff4d4d'; ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = `700 ${BADGE + 3}px "Inter Tight",sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('×', b.x + b.w, b.y + 0.5);
+        ctx.restore();
+      }
+    }
+    updateDim();
+  }
+  function updateDim() {
+    if (!dimLabel) return;
+    if (cropMode && cropRect) dimLabel.textContent = Math.round(cropRect.w / fit) + ' × ' + Math.round(cropRect.h / fit);
+    else dimLabel.textContent = baseW + ' × ' + baseH;
+  }
+
+  // ---- open ----
+  function open() {
+    if (!cheatsheetLastDataURL) { alert('Gen ảnh trước đã.'); return; }
+    const im = new Image();
+    im.onload = () => {
+      img = im; baseW = im.naturalWidth; baseH = im.naturalHeight;
+      const availW = Math.min(window.innerWidth - 48, 1000);
+      const availH = window.innerHeight - 150;
+      fit = Math.min(availW / baseW, availH / baseH, 1);
+      canvas.width = Math.round(baseW * fit); canvas.height = Math.round(baseH * fit);
+      layers = []; selId = null; drag = null; cropMode = false; cropRect = null;
+      if (applyCropBtn) applyCropBtn.style.display = 'none';
+      draw(); view.style.display = 'flex'; view.focus();
+    };
+    im.src = cheatsheetLastDataURL;
+  }
+  window.openCheatsheetCropEditor = open;
+
+  function pos(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * (canvas.width / r.width), y: (e.clientY - r.top) * (canvas.height / r.height) }; }
+  function hitLayer(p) { for (let i = layers.length - 1; i >= 0; i--) { const b = layerBox(layers[i], canvas.width, canvas.height); if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return layers[i]; } return null; }
+
+  function cropHandlePoints(r) {
+    return [
+      { x: r.x, y: r.y, h: 'nw' }, { x: r.x + r.w / 2, y: r.y, h: 'n' }, { x: r.x + r.w, y: r.y, h: 'ne' },
+      { x: r.x, y: r.y + r.h / 2, h: 'w' }, { x: r.x + r.w, y: r.y + r.h / 2, h: 'e' },
+      { x: r.x, y: r.y + r.h, h: 'sw' }, { x: r.x + r.w / 2, y: r.y + r.h, h: 's' }, { x: r.x + r.w, y: r.y + r.h, h: 'se' }
+    ];
+  }
+  function cropHandleAt(p) {
+    if (!cropRect) return null;
+    const T = 12;
+    for (const pt of cropHandlePoints(cropRect)) { if (Math.abs(p.x - pt.x) <= T && Math.abs(p.y - pt.y) <= T) return pt.h; }
+    const r = cropRect;
+    if (p.x > r.x + T && p.x < r.x + r.w - T && p.y > r.y + T && p.y < r.y + r.h - T) return 'move';
+    return null;
+  }
+  const CROP_CURSOR = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', move: 'move' };
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const p = pos(e);
+    if (cropMode) {
+      const h = cropHandleAt(p);
+      if (h) { drag = { mode: 'cropresize', handle: h, r0: { ...cropRect }, p0: p }; }
+      else { drag = { mode: 'cropnew', x0: p.x, y0: p.y }; cropRect = { x: p.x, y: p.y, w: 0, h: 0 }; }
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault(); return;
+    }
+    // selected layer controls
+    if (selId) {
+      const l = layers.find(x => x.id === selId);
+      if (l) {
+        const b = layerBox(l, canvas.width, canvas.height);
+        const dx = p.x - (b.x + b.w), dy = p.y - b.y;
+        if (dx * dx + dy * dy <= (BADGE + 4) * (BADGE + 4)) { layers = layers.filter(x => x.id !== selId); selId = null; draw(); e.preventDefault(); return; }
+        if (p.x >= b.x + b.w - HANDLE && p.y >= b.y + b.h - HANDLE) { drag = { mode: 'resize', id: l.id, cx: b.cx, cy: b.cy, startDist: Math.hypot(p.x - b.cx, p.y - b.cy) || 1, startFont: l.fontSize, startWidth: l.widthPct }; try { canvas.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); return; }
+      }
+    }
+    const hit = hitLayer(p);
+    if (hit) { selId = hit.id; const b = layerBox(hit, canvas.width, canvas.height); drag = { mode: 'move', id: hit.id, gx: p.x - b.cx, gy: p.y - b.cy }; try { canvas.setPointerCapture(e.pointerId); } catch (_) {} }
+    else { selId = null; }
+    draw(); e.preventDefault();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const p = pos(e);
+    if (!drag) {
+      if (cropMode) { const h = cropHandleAt(p); canvas.style.cursor = h ? CROP_CURSOR[h] : 'crosshair'; }
+      return;
+    }
+    if (drag.mode === 'cropnew') {
+      cropRect = { x: Math.max(0, Math.min(drag.x0, p.x)), y: Math.max(0, Math.min(drag.y0, p.y)), w: Math.abs(p.x - drag.x0), h: Math.abs(p.y - drag.y0) };
+      cropRect.w = Math.min(cropRect.w, canvas.width - cropRect.x); cropRect.h = Math.min(cropRect.h, canvas.height - cropRect.y);
+    } else if (drag.mode === 'cropresize') {
+      const r0 = drag.r0, h = drag.handle, MIN = 20;
+      if (h === 'move') {
+        let nx = r0.x + (p.x - drag.p0.x), ny = r0.y + (p.y - drag.p0.y);
+        nx = Math.max(0, Math.min(nx, canvas.width - r0.w));
+        ny = Math.max(0, Math.min(ny, canvas.height - r0.h));
+        cropRect = { x: nx, y: ny, w: r0.w, h: r0.h };
+      } else {
+        let left = r0.x, top = r0.y, right = r0.x + r0.w, bottom = r0.y + r0.h;
+        if (h.includes('w')) left = Math.max(0, Math.min(p.x, right - MIN));
+        if (h.includes('e')) right = Math.min(canvas.width, Math.max(p.x, left + MIN));
+        if (h.includes('n')) top = Math.max(0, Math.min(p.y, bottom - MIN));
+        if (h.includes('s')) bottom = Math.min(canvas.height, Math.max(p.y, top + MIN));
+        cropRect = { x: left, y: top, w: right - left, h: bottom - top };
+      }
+    } else {
+      const l = layers.find(x => x.id === drag.id); if (!l) return;
+      if (drag.mode === 'move') { l.xPct = Math.max(0, Math.min(1, (p.x - drag.gx) / canvas.width)); l.yPct = Math.max(0, Math.min(1, (p.y - drag.gy) / canvas.height)); }
+      else { const scale = Math.hypot(p.x - drag.cx, p.y - drag.cy) / drag.startDist; if (l.type === 'text') l.fontSize = Math.max(6, drag.startFont * scale); else l.widthPct = Math.max(0.02, Math.min(2, drag.startWidth * scale)); }
+    }
+    draw(); e.preventDefault();
+  });
+  const end = (e) => { if (drag) { drag = null; try { canvas.releasePointerCapture(e.pointerId); } catch (_) {} } };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('dblclick', (e) => {
+    if (cropMode) return; const l = hitLayer(pos(e));
+    if (l && l.type === 'text') { const n = prompt('Sửa text:', l.text); if (n !== null) { l.text = n; selId = l.id; draw(); } }
+  });
+  view.addEventListener('keydown', (e) => { if ((e.key === 'Delete' || e.key === 'Backspace') && selId && !cropMode) { layers = layers.filter(x => x.id !== selId); selId = null; draw(); } });
+
+  // ---- toolbar ----
+  document.getElementById('csAddText').addEventListener('click', () => {
+    layers.push({ type: 'text', id: ++idSeq, text: 'Text', xPct: 0.5, yPct: 0.5, fontSize: Math.round(baseW * 0.05), color: '#111111', bgColor: '#ffe94d', bgAlpha: 1, bold: true, wrapPct: 0.9 });
+    selId = idSeq; cropMode = false; if (applyCropBtn) applyCropBtn.style.display = 'none'; draw();
+  });
+  document.getElementById('csAddImage').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const url = URL.createObjectURL(f); const im = new Image();
+    im.onload = () => { layers.push({ type: 'image', id: ++idSeq, imgEl: im, xPct: 0.5, yPct: 0.5, widthPct: 0.4, naturalRatio: im.naturalHeight / im.naturalWidth }); selId = idSeq; cropMode = false; if (applyCropBtn) applyCropBtn.style.display = 'none'; draw(); };
+    im.src = url; e.target.value = '';
+  });
+  document.getElementById('csCropToggle').addEventListener('click', () => {
+    cropMode = !cropMode; selId = null;
+    cropRect = cropMode ? { x: 0, y: 0, w: canvas.width, h: canvas.height } : null;
+    if (applyCropBtn) applyCropBtn.style.display = cropMode ? '' : 'none';
+    canvas.style.cursor = cropMode ? 'crosshair' : 'default';
+    draw();
+  });
+  applyCropBtn.addEventListener('click', () => {
+    if (!cropMode || !cropRect || cropRect.w < 4 || cropRect.h < 4) { alert('Kéo chọn vùng crop trước.'); return; }
+    // flatten at full res, then crop the selected source region
+    const sx = Math.round(cropRect.x / fit), sy = Math.round(cropRect.y / fit);
+    const sw = Math.round(cropRect.w / fit), sh = Math.round(cropRect.h / fit);
+    const full = document.createElement('canvas'); full.width = baseW; full.height = baseH;
+    composite(full.getContext('2d'), baseW, baseH);
+    const out = document.createElement('canvas'); out.width = sw; out.height = sh;
+    out.getContext('2d').drawImage(full, sx, sy, sw, sh, 0, 0, sw, sh);
+    const im = new Image();
+    im.onload = () => {
+      img = im; baseW = sw; baseH = sh; layers = []; selId = null; cropMode = false; cropRect = null;
+      if (applyCropBtn) applyCropBtn.style.display = 'none';
+      const availW = Math.min(window.innerWidth - 48, 1000), availH = window.innerHeight - 150;
+      fit = Math.min(availW / baseW, availH / baseH, 1);
+      canvas.width = Math.round(baseW * fit); canvas.height = Math.round(baseH * fit);
+      canvas.style.cursor = 'default'; draw();
+    };
+    im.src = out.toDataURL('image/png');
+  });
+
+  document.getElementById('csEditSave').addEventListener('click', () => {
+    // flatten image + overlays at FULL source resolution
+    const full = document.createElement('canvas'); full.width = baseW; full.height = baseH;
+    composite(full.getContext('2d'), baseW, baseH);
+    const dataURL = full.toDataURL('image/png');
+    cheatsheetLastDataURL = dataURL;
+    const preview = document.getElementById('cheatsheetImg');
+    if (preview) { preview.src = dataURL; preview.style.display = 'block'; }
+    const ph = document.getElementById('cheatsheetPlaceholder'); if (ph) ph.style.display = 'none';
+    view.style.display = 'none';
+  });
+  document.getElementById('cheatsheetEditClose').addEventListener('click', () => { view.style.display = 'none'; });
+  document.getElementById('cropCancelBtn').addEventListener('click', () => { view.style.display = 'none'; });
+})();
+
+// ---- CHEATSHEET TAB (fully isolated from video state) ----
+(function wireCheatsheet() {
+  const KEY = 'manim_cheatsheet_prompt_v1';
+  const TOPIC_KEY = 'manim_cheatsheet_topic_v1';
+  const NICHE_KEY = 'manim_cheatsheet_niche_v1';
+  const DEFAULT_CHEATSHEET_PROMPT =
+`Create a highly detailed educational infographic poster for a US test-prep audience.
+Topic: [INSERT TOPIC]
+Exam / Niche: [INSERT EXAM, e.g. CCNA, Network+, DMV, CNA, PMP, GED]
+Goal:
+Design a visually rich, easy-to-understand educational infographic that helps learners quickly understand the topic at a glance. The infographic should explain the concept clearly, visually, and step by step, so even beginners can follow it. The content should feel complete, practical, and highly useful for studying.
+Visual style:
+- Clean, modern, professional educational design
+- Soft, calm, polished color palette
+- Use gentle and elegant tones, not overly flashy
+- Highly readable on mobile and desktop
+- Organized in clear sections with boxes/cards/panels
+- Use subtle icons, diagrams, arrows, mini charts, labels, and callout boxes
+- Make the infographic feel premium and trustworthy
+- Include visual knowledge blocks so the learner can understand the topic quickly
+- Avoid clutter, but include a lot of useful information
+- Make the layout balanced and easy to scan
+Branding:
+- Include the brand logo at the top
+- Include the brand name prominently
+- Include the brand slogan under or near the header
+- Branding should feel integrated and professional, not too intrusive
+Content structure:
+Please include enough detail to make the infographic feel substantial and study-worthy, similar to a premium cheat sheet or visual study guide.
+Illustration requirements:
+- Use visual diagrams wherever possible
+- Show processes using arrows and flow
+- Use labeled examples
+- Use small icons or illustrations related to the subject
+- Turn abstract concepts into visual explanations
+- Make the explanation intuitive, not text-heavy only
+- Use educational visuals that help the learner understand and remember
+Text requirements:
+- Write in clear, simple American English
+- Be accurate, practical, and study-focused
+- Include detailed explanations, but keep them concise enough for an infographic
+- Make every section useful for someone preparing for the exam
+- Use headings, bullets, and compact explanatory text
+- Make the final output look like a premium exam-prep infographic
+Layout requirements:
+- Vertical infographic poster layout
+- Dense but well-organized
+- Multiple content panels with clean spacing
+- Header at top, footer at bottom
+- Clear information hierarchy
+- Easy to scan from top to bottom
+Output quality:
+- High-resolution educational infographic
+- Sharp, readable typography
+- Well-structured information design
+- Suitable for social media, study sharing, and educational content marketing
+Important:
+Do not make it look like a generic poster. Make it look like a complete visual study resource with real learning value.`;
+
+  const view = document.getElementById('cheatsheetView');
+  const promptEl = document.getElementById('cheatsheetPrompt');
+  const topicEl = document.getElementById('cheatsheetTopic');
+  const nicheEl = document.getElementById('cheatsheetNiche');
+  const genBtn = document.getElementById('cheatsheetGenBtn');
+  const dlBtn = document.getElementById('cheatsheetDownloadBtn');
+  const statusEl = document.getElementById('cheatsheetStatus');
+  const imgEl = document.getElementById('cheatsheetImg');
+  const placeholder = document.getElementById('cheatsheetPlaceholder');
+  const openaiKeyInput = document.getElementById('openaiKeyInput');
+  const openaiKeySave = document.getElementById('openaiKeySave');
+  const openaiKeyClear = document.getElementById('openaiKeyClear');
+  const openaiKeyStatus = document.getElementById('openaiKeyStatus');
+  const OPENAI_KEY = 'manim_openai_key_v1';
+  if (!view) return;
+  let lastDataURL = null;
+
+  // OpenAI key: load (masked), save, clear — stored only in this browser
+  try { const k = localStorage.getItem(OPENAI_KEY); if (k && openaiKeyInput) openaiKeyInput.value = k; } catch (e) {}
+  const refreshKeyStatus = () => {
+    if (!openaiKeyStatus) return;
+    let has = false; try { has = !!localStorage.getItem(OPENAI_KEY); } catch (e) {}
+    openaiKeyStatus.textContent = has
+      ? '✓ Đã lưu key trong trình duyệt (không nằm trong code). Chỉ an toàn trên máy bạn.'
+      : 'Key lưu trong trình duyệt (localStorage) — không nằm trong code/GitHub. App client-side nên key chỉ an toàn trên máy bạn.';
+  };
+  refreshKeyStatus();
+  if (openaiKeySave) openaiKeySave.addEventListener('click', () => {
+    const k = (openaiKeyInput.value || '').trim();
+    try { if (k) localStorage.setItem(OPENAI_KEY, k); else localStorage.removeItem(OPENAI_KEY); } catch (e) {}
+    refreshKeyStatus();
+  });
+  if (openaiKeyClear) openaiKeyClear.addEventListener('click', () => {
+    openaiKeyInput.value = '';
+    try { localStorage.removeItem(OPENAI_KEY); } catch (e) {}
+    refreshKeyStatus();
+  });
+
+  // Prompt: use the saved one, else the default infographic template
+  try {
+    const saved = localStorage.getItem(KEY);
+    promptEl.value = (saved && saved.trim()) ? saved : DEFAULT_CHEATSHEET_PROMPT;
+  } catch (e) { promptEl.value = DEFAULT_CHEATSHEET_PROMPT; }
+  try { topicEl.value = localStorage.getItem(TOPIC_KEY) || ''; } catch (e) {}
+  try { nicheEl.value = localStorage.getItem(NICHE_KEY) || ''; } catch (e) {}
+
+  promptEl.addEventListener('input', () => { try { localStorage.setItem(KEY, promptEl.value); } catch (e) {} });
+  topicEl.addEventListener('input', () => { try { localStorage.setItem(TOPIC_KEY, topicEl.value); } catch (e) {} });
+  nicheEl.addEventListener('input', () => { try { localStorage.setItem(NICHE_KEY, nicheEl.value); } catch (e) {} });
+
+  genBtn.addEventListener('click', async () => {
+    const rawPrompt = (promptEl.value || '').trim();
+    const topic = (topicEl.value || '').trim();
+    const niche = (nicheEl.value || '').trim();
+    if (!rawPrompt) { statusEl.textContent = '✗ Prompt trống.'; return; }
+    if (!topic) { statusEl.textContent = '✗ Nhập Topic đã.'; return; }
+
+    let openaiKey = (openaiKeyInput && openaiKeyInput.value.trim()) || '';
+    try { if (!openaiKey) openaiKey = localStorage.getItem(OPENAI_KEY) || ''; } catch (e) {}
+    if (!openaiKey) { statusEl.textContent = '✗ Nhập OpenAI API key đã (rồi bấm Lưu key).'; return; }
+
+    // Inject topic + niche into the placeholders
+    const prompt = rawPrompt
+      .replace(/\[INSERT TOPIC\]/gi, topic)
+      .replace(/\[INSERT EXAM[^\]]*\]/gi, niche || 'general test prep');
+
+    genBtn.disabled = true; dlBtn.disabled = true; dlBtn.style.opacity = '0.5';
+    statusEl.textContent = '⏳ Đang gen…';
+    try {
+      const onS = (m) => { statusEl.textContent = '⏳ ' + m; };
+      const dataURL = await generateCheatsheetImageOpenAI(prompt, openaiKey, onS);
+      lastDataURL = dataURL;
+      cheatsheetLastDataURL = dataURL;   // so the topbar SAVE button can download it
+      imgEl.src = dataURL; imgEl.style.display = 'block';
+      if (placeholder) placeholder.style.display = 'none';
+      dlBtn.disabled = false; dlBtn.style.opacity = '1';
+      statusEl.textContent = '✓ Xong. Bấm 💾 SAVE (trên cùng) để tải ảnh về.';
+    } catch (e) {
+      console.error('[cheatsheet]', e);
+      statusEl.textContent = '✗ ' + e.message;
+    } finally {
+      genBtn.disabled = false;
+    }
+  });
+
+  dlBtn.addEventListener('click', () => {
+    if (!lastDataURL) return;
+    const ext = (lastDataURL.match(/^data:image\/(\w+)/) || [, 'png'])[1];
+    const a = document.createElement('a');
+    a.href = lastDataURL;
+    a.download = 'cheatsheet_' + Date.now() + '.' + ext;
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+})();
 
 // ===== GENERATE VOICE =====
 document.getElementById('generateBtn').onclick = generateVoice;
@@ -3823,8 +4686,10 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  if (btnPortrait) btnPortrait.addEventListener('click', () => setMode('9x16'));
-  if (btnLandscape) btnLandscape.addEventListener('click', () => setMode('16x9'));
+  if (btnPortrait) btnPortrait.addEventListener('click', () => { setTab('video'); setMode('9x16'); });
+  if (btnLandscape) btnLandscape.addEventListener('click', () => { setTab('video'); setMode('16x9'); });
+  const btnCheat = document.getElementById('modeCheatsheet');
+  if (btnCheat) btnCheat.addEventListener('click', () => setTab('cheatsheet'));
 
   document.querySelectorAll('.style-btn').forEach(btn => {
     btn.addEventListener('click', () => setStyle(btn.dataset.style));
@@ -4178,6 +5043,7 @@ function collectFormState() {
     'topicInput', 'qText', 'brandTopText',
     'badgeText', 'badgeBgColor', 'badgeTextColor',
     'bgPreset', 'bgColor', 'bgLineColor', 'bgPattern',
+    'qTextColor', 'stepColor',
     'nicheDesc',
     'scriptText'
   ];
@@ -4185,6 +5051,8 @@ function collectFormState() {
     const el = document.getElementById(id);
     if (el) state[id] = el.value;
   }
+  const showStepsEl = document.getElementById('showStepsToggle');
+  if (showStepsEl) state.showSteps = showStepsEl.checked;
   const voiceSel = document.getElementById('voicePresets');
   if (voiceSel) state.voicePresets = voiceSel.value;
   // Video mode + landscape style — global variables, not form fields
@@ -4231,6 +5099,10 @@ function loadFormState() {
     setVal('bgColor', s.bgColor);
     setVal('bgLineColor', s.bgLineColor);
     setVal('bgPattern', s.bgPattern);
+    setVal('qTextColor', s.qTextColor);
+    setVal('stepColor', s.stepColor);
+    const showStepsEl = document.getElementById('showStepsToggle');
+    if (showStepsEl && typeof s.showSteps === 'boolean') showStepsEl.checked = s.showSteps;
     setVal('nicheDesc', s.nicheDesc);
     setVal('scriptText', s.scriptText);
     setVal('voicePresets', s.voicePresets);
@@ -4241,24 +5113,9 @@ function loadFormState() {
     if (s._videoStyle) videoStyle = s._videoStyle;
     if (typeof s.nicheDesc === 'string') nicheDescription = s.nicheDesc;
 
-    // Restore options (text + which is the answer)
-    if (Array.isArray(s.options)) {
-      const rows = document.querySelectorAll('.opt-row');
-      s.options.forEach((opt, i) => {
-        if (i >= rows.length) return;
-        const row = rows[i];
-        const inp = row.querySelector('input.input');
-        if (inp && opt.text !== undefined) inp.value = opt.text;
-      });
-      // Apply is-answer to whichever row matches
-      const answerIdx = s.options.findIndex(o => o.isAnswer);
-      if (answerIdx >= 0 && answerIdx < rows.length) {
-        rows.forEach((r, i) => {
-          r.classList.toggle('is-answer', i === answerIdx);
-          const c = r.querySelector('.opt-check');
-          if (c) c.textContent = (i === answerIdx) ? '◉' : '◯';
-        });
-      }
+    // Restore options (text + which are correct — supports N options + multi-correct)
+    if (Array.isArray(s.options) && s.options.length) {
+      rebuildOptRows(s.options.map(o => ({ text: o.text, isAnswer: !!o.isAnswer })));
     }
 
     return true;
@@ -4292,11 +5149,7 @@ function attachFormStateListeners() {
   // Voice preset selector
   const voiceSel = document.getElementById('voicePresets');
   if (voiceSel) voiceSel.addEventListener('change', scheduleSaveState);
-  // Option-row clicks (changing answer marker) — defer so the row's class
-  // mutation finishes first, then capture the new state
-  document.querySelectorAll('.opt-row').forEach(row => {
-    row.addEventListener('click', () => setTimeout(scheduleSaveState, 60));
-  });
+  // (opt-row answer-marker clicks are saved via the #optRows delegated handler)
 }
 
 // ===== Sync editor form -> render state (no DOM, just data) =====
@@ -4318,18 +5171,22 @@ function syncRenderStateFromEditor() {
   // Background — read 3 controls (color picker for paper, color picker for line, pattern select)
   const bgColorEl = document.getElementById('bgColor');
   if (bgColorEl) RS.bgColor = bgColorEl.value;
+  const qTextColorEl = document.getElementById('qTextColor');
+  if (qTextColorEl) RS.qTextColor = qTextColorEl.value;
+  const stepColorEl = document.getElementById('stepColor');
+  if (stepColorEl) RS.stepColor = stepColorEl.value;
+  const showStepsEl = document.getElementById('showStepsToggle');
+  if (showStepsEl) RS.showSteps = showStepsEl.checked;
   const bgLineColorEl = document.getElementById('bgLineColor');
   if (bgLineColorEl) RS.bgLineColor = bgLineColorEl.value;
   const bgPatternEl = document.getElementById('bgPattern');
   if (bgPatternEl) RS.bgPattern = bgPatternEl.value;
 
-  const optRows = document.querySelectorAll('.opt-row');
+  const optRows = document.querySelectorAll('#optRows .opt-row');
   RS.options = [];
-  ['A','B','C','D'].forEach((letter, i) => {
-    const row = optRows[i];
-    if (!row) return;
+  optRows.forEach((row, i) => {
     RS.options.push({
-      letter,
+      letter: String.fromCharCode(65 + i),
       text: row.querySelectorAll('input')[0].value,
       isAnswer: row.classList.contains('is-answer')
     });
@@ -5460,6 +6317,16 @@ function getVoiceProgressWithinScene(scene, t) {
 // (drawHandWithMarker removed — replaced by drawRealHandPen using the real
 // hand-holding-pen photo asset.)
 
+// Draw an image or video element to fill W×H (cover-fit, centered/cropped).
+function drawMediaCover(ctx, media, W, H) {
+  const mw = media.videoWidth || media.naturalWidth || media.width || 0;
+  const mh = media.videoHeight || media.naturalHeight || media.height || 0;
+  if (!mw || !mh) { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H); return; }
+  const scale = Math.max(W / mw, H / mh);
+  const dw = mw * scale, dh = mh * scale;
+  ctx.drawImage(media, (W - dw) / 2, (H - dh) / 2, dw, dh);
+}
+
 function renderFrame(ctx, W, H, t) {
   // Dispatch to landscape renderer if we're in 16:9 mode
   if (videoMode === '16x9') return renderFrame16x9(ctx, W, H, t);
@@ -5483,10 +6350,23 @@ function renderFrame(ctx, W, H, t) {
   const bgLineColor = RS.bgLineColor || '#b4d2eb';
   const bgPattern = RS.bgPattern || 'lines';
 
-  ctx.fillStyle = bgColor;
-  ctx.fillRect(0, 0, W, H);
+  if (RS.bgMediaEl) {
+    // Full-bleed image/video background replaces the paper.
+    try { drawMediaCover(ctx, RS.bgMediaEl, W, H); } catch (e) { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H); }
+    // Soft light scrim near the top so dark header/question text stays readable.
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, 'rgba(255,255,255,0.42)');
+    g.addColorStop(0.42, 'rgba(255,255,255,0.12)');
+    g.addColorStop(1, 'rgba(255,255,255,0.02)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, W, H);
+  }
 
   const lineSpacing = 30 * s;
+  if (!RS.bgMediaEl) {
   if (bgPattern === 'lines') {
     ctx.strokeStyle = bgLineColor;
     ctx.globalAlpha = 0.55;
@@ -5521,6 +6401,7 @@ function renderFrame(ctx, W, H, t) {
       }
     }
     ctx.globalAlpha = 1;
+  }
   }
   // 'none' = solid paper color, no overlay
 
@@ -5638,15 +6519,35 @@ function renderFrame(ctx, W, H, t) {
   }
 
   // QUESTION (left-aligned, wraps) — LARGER than options for clear hierarchy
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = RS.qTextColor || '#111';
   ctx.font = `600 ${18 * s}px "Inter Tight", system-ui, sans-serif`;
   cursorY = drawQuestionLeft(ctx, formatMathText(RS.qText), PAD, cursorY, innerW, 25 * s, t);
   cursorY += 16 * s;                    // gap below question
 
+  // QUESTION IMAGE (optional) — centered white card below the question, shown throughout
+  if (RS.qImageEl) {
+    const iw0 = RS.qImageEl.naturalWidth || RS.qImageEl.width || 0;
+    const ih0 = RS.qImageEl.naturalHeight || RS.qImageEl.height || 0;
+    if (iw0 && ih0) {
+      const targetW = innerW * 0.55;
+      const targetH = targetW * (ih0 / iw0);
+      const cardPad = 10 * s;
+      const cardW = targetW + cardPad * 2, cardH = targetH + cardPad * 2;
+      const cardX = (W - cardW) / 2, cardY = cursorY;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.18)';
+      ctx.shadowBlur = 14 * s; ctx.shadowOffsetY = 4 * s;
+      roundRect(ctx, cardX, cardY, cardW, cardH, 14 * s, '#ffffff');
+      ctx.restore();
+      try { ctx.drawImage(RS.qImageEl, cardX + cardPad, cardY + cardPad, targetW, targetH); } catch (e) {}
+      cursorY = cardY + cardH + 18 * s;
+    }
+  }
+
   // OPTIONS (left-aligned, slight indent) — smaller than question; wraps long text
   ctx.font = `500 ${14 * s}px "JetBrains Mono", "Courier New", monospace`;
   const optLineH = 22 * s;              // per-line height when an option wraps
-  const optGap = 6 * s;                 // gap between options
+  const optGap = (RS.bgMediaEl ? 16 : 6) * s;   // wider gap so option cards don't touch
   const optsStartY = cursorY;
   const optIndent = PAD + 18 * s;       // small indent for letter marker
   const optTextRight = W - PAD;         // right edge available for option text
@@ -5666,6 +6567,17 @@ function renderFrame(ctx, W, H, t) {
     const reveal = answerRevealed && opt.isAnswer;
     const blockHeight = lines.length * optLineH;
     const baselineFirst = optY + 16 * s;   // baseline of first line
+
+    // Over a photo/video background, put each option on a white rounded card
+    // (like a DMV-style quiz) so the text stays readable. Skip for the correct
+    // one when it's revealed (it gets its own yellow highlight below).
+    if (RS.bgMediaEl && !reveal) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.16)';
+      ctx.shadowBlur = 10 * s; ctx.shadowOffsetY = 3 * s;
+      roundRect(ctx, PAD, optY - 4 * s, innerW, blockHeight + 8 * s, 9 * s, 'rgba(255,255,255,0.96)');
+      ctx.restore();
+    }
 
     if (reveal) {
       // Highlight box wraps the FULL multi-line option, sized to widest line
@@ -5795,6 +6707,7 @@ function renderFrame(ctx, W, H, t) {
   const activeSteps = pages[activePage] || [];
 
   // --- RENDER the active page only ---
+  if (RS.showSteps !== false) {
   let stepCursorY = cursorY;
   for (const info of activeSteps) {
     let showStep = true;
@@ -5817,7 +6730,7 @@ function renderFrame(ctx, W, H, t) {
     ctx.font = `700 ${info.font}px "Kalam", "Patrick Hand", "Caveat", cursive`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#d92027';   // red ink (teacher's pen)
+    ctx.fillStyle = RS.stepColor || '#d92027';   // step ink color (user-selectable)
 
     const totalChars = info.lines.reduce((a, l) => a + l.length, 0) || 1;
     let charsRevealed = Math.floor(totalChars * progress);
@@ -5850,7 +6763,7 @@ function renderFrame(ctx, W, H, t) {
     ctx.textAlign = 'right';
     ctx.fillText(`page ${activePage + 1}/${pages.length}`, W - PAD, stepsBottom + 14 * s);
   }
-
+  }
   // ==================== DEBUG HUD (live preview only — hidden during export) ====================
   if (audioBuffer && t > 0 && !isExporting) {
     ctx.font = `400 ${8 * s}px "JetBrains Mono", monospace`;
@@ -6061,7 +6974,7 @@ function drawQuestionLeft(ctx, text, startX, startY, maxWidth, lineH, t) {
         const pad = 2;
         ctx.fillRect(drawX - pad, y - lineH + 5, wObj.width + pad * 2, lineH);
       }
-      ctx.fillStyle = '#111';
+      ctx.fillStyle = (typeof RS !== 'undefined' && RS.qTextColor) ? RS.qTextColor : '#111';
       ctx.fillText(wObj.text, drawX, y);
       drawX += wObj.width + (i < line.words.length - 1 ? spaceW : 0);
     });
@@ -6709,6 +7622,15 @@ document.querySelectorAll('.input').forEach(i => i.addEventListener('input', syn
   const el = document.getElementById(id);
   if (el) el.addEventListener('input', syncEditor);
 });
+// Question/step color pickers + steps on/off toggle → live re-render
+['qTextColor', 'stepColor'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => { syncEditor(); scheduleSaveState(); });
+});
+{
+  const el = document.getElementById('showStepsToggle');
+  if (el) el.addEventListener('change', () => { syncEditor(); scheduleSaveState(); });
+}
 
 // Background controls — preset select fills the BG/LINE/PATTERN inputs,
 // then any of those 3 inputs being touched switches preset back to "custom".
@@ -7821,27 +8743,14 @@ function fillFormFromResearch(r) {
   if (r.question) document.getElementById('qText').value = r.question;
   document.getElementById('editorTitle').textContent = r.question || 'Untitled';
 
-  // Options
-  const optInputs = document.querySelectorAll('.opt-row input.input');
+  // Options — rebuild rows to match whatever the generated question provides
   if (r.options) {
-    ['A', 'B', 'C', 'D'].forEach((k, i) => {
-      if (optInputs[i] && r.options[k] !== undefined) {
-        optInputs[i].value = r.options[k];
-      }
-    });
-  }
-
-  // Answer (mark correct option — can be A, B, C, OR D, not always D)
-  const optRows = document.querySelectorAll('.opt-row');
-  optRows.forEach(row => {
-    row.classList.remove('is-answer');
-    row.querySelector('.opt-check').textContent = '◯';
-  });
-  const ansLetter = (r.answer || 'A').toUpperCase();
-  const ansIdx = ['A', 'B', 'C', 'D'].indexOf(ansLetter);
-  if (ansIdx >= 0 && optRows[ansIdx]) {
-    optRows[ansIdx].classList.add('is-answer');
-    optRows[ansIdx].querySelector('.opt-check').textContent = '◉';
+    const keys = Object.keys(r.options).filter(k => r.options[k] !== undefined && r.options[k] !== null);
+    // Correct answer(s): r.answer may be "A" or "A, C" or ["A","C"]
+    const ans = Array.isArray(r.answer) ? r.answer : String(r.answer || 'A').split(/[,\s]+/);
+    const ansSet = new Set(ans.map(a => a.toUpperCase().trim()).filter(Boolean));
+    const data = keys.map(k => ({ text: String(r.options[k]), isAnswer: ansSet.has(k.toUpperCase()) }));
+    if (data.length) rebuildOptRows(data);
   }
 
   // Rebuild steps dynamically (2-6 steps allowed)
@@ -7935,19 +8844,19 @@ document.getElementById('genFromMineBtn').addEventListener('click', async () => 
   const question = document.getElementById('qText').value.trim();
   if (!question) { alert('Enter the question first'); return; }
 
-  const optRows = document.querySelectorAll('.opt-row');
+  const optRows = document.querySelectorAll('#optRows .opt-row');
   const options = {};
-  let answer = '';
-  const letters = ['A', 'B', 'C', 'D'];
+  const correctLetters = [];
   optRows.forEach((row, i) => {
-    const letter = letters[i];
+    const letter = String.fromCharCode(65 + i);
     const text = row.querySelectorAll('input')[0]?.value.trim() || '';
     options[letter] = text;
-    if (row.classList.contains('is-answer')) answer = letter;
+    if (row.classList.contains('is-answer')) correctLetters.push(letter);
   });
+  const answer = correctLetters.join(', ');
 
-  if (Object.values(options).some(v => !v)) { alert('Fill in all 4 answer options first'); return; }
-  if (!answer) { alert('Mark which option is the correct answer (click ◯)'); return; }
+  if (Object.values(options).some(v => !v)) { alert('Điền hết các đáp án trước'); return; }
+  if (!correctLetters.length) { alert('Đánh dấu ít nhất 1 đáp án đúng (click ◯)'); return; }
 
   const topic = document.getElementById('topicInput').value.trim() || (RS.brandTop + ' ' + RS.brandBadge);
 
@@ -8473,7 +9382,10 @@ if (scriptTextEl) {
 
 // Wire export buttons
 document.getElementById('exportBtn').onclick = downloadWav;
-document.getElementById('exportMp4Btn').onclick = recordVideoMp4;
+document.getElementById('exportMp4Btn').onclick = () => {
+  if (currentTab === 'cheatsheet') { showCheatsheetSaveModal(); }
+  else { recordVideoMp4(); }
+};
 document.getElementById('dlBtn').onclick = downloadWav;
 
 // Wire play buttons (in case they weren't wired by earlier code)
@@ -8870,6 +9782,25 @@ function openEditor() {
   editorVideoUrl = URL.createObjectURL(savedVideoBlob);
   video.src = editorVideoUrl;
 
+  // Fit the video into the preview pane by its true aspect (portrait or
+  // landscape) instead of letting CSS stretch it. Deterministic sizing also
+  // keeps the overlay canvas aligned.
+  video.onloadedmetadata = () => {
+    const pane = video.closest('.editor-preview-pane');
+    const wrap = video.closest('.editor-preview-wrap');
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh || !pane) return;
+    const pr = pane.getBoundingClientRect();
+    const availW = Math.max(40, pr.width - 40);   // account for 20px pane padding
+    const availH = Math.max(40, pr.height - 40);
+    const scale = Math.min(availW / vw, availH / vh);
+    const w = Math.round(vw * scale), h = Math.round(vh * scale);
+    video.style.width = w + 'px';
+    video.style.height = h + 'px';
+    if (wrap) { wrap.style.width = w + 'px'; wrap.style.height = h + 'px'; }
+    updatePreviewOverlay();
+  };
+
   // Set up trim sliders from the current audio duration
   const dur = audioDuration || 0;
   const start = document.getElementById('trimStart');
@@ -9069,12 +10000,13 @@ function addTextLayer() {
     // Positions expressed as PERCENTAGES of canvas (0-1) so they scale to any output size
     xPct: 0.5, yPct: 0.5,
     fontSize: 60,     // in the RENDER coordinate space (1080x1920)
-    color: '#ffffff',
-    bgColor: '#000000',
-    bgAlpha: 0.7,
+    color: '#111111',
+    bgColor: '#ffe94d',   // yellow pill (like the reference sticker)
+    bgAlpha: 1,
     bold: true,
+    wrapPct: 0.9,     // auto word-wrap to 90% of frame width
     startTime: 0,
-    endTime: Math.min(5, dur)
+    endTime: dur      // show for the whole clip by default (was 5s → text vanished mid-play)
   };
   editorLayers.push(layer);
   selectedLayerId = layer.id;
@@ -9099,7 +10031,7 @@ async function addImageLayerFromFile(file) {
     widthPct: 0.30,
     naturalRatio: img.naturalHeight / img.naturalWidth,
     startTime: 0,
-    endTime: Math.min(5, dur),
+    endTime: dur,     // show for the whole clip by default
     opacity: 1
   };
   layerMediaCache.set(layer.id, img);
@@ -9268,13 +10200,17 @@ function timingRow(layer) {
 }
 
 function renderTextLayerItem(layer) {
-  const { item, body, nameSpan } = makeLayerItemShell(layer, `📝 ${layer.text.slice(0, 26)}`);
+  const { item, body, nameSpan } = makeLayerItemShell(layer, `📝 ${(layer.text || '').replace(/\n/g, ' ').slice(0, 26)}`);
 
-  const txt = document.createElement('input');
-  txt.type = 'text'; txt.value = layer.text;
+  const txt = document.createElement('textarea');
+  txt.value = layer.text;
+  txt.rows = 2;
+  txt.setAttribute('data-layer-text', layer.id);
+  txt.style.cssText = 'width:100%;box-sizing:border-box;resize:vertical;min-height:38px;font-family:inherit;font-size:12px;padding:6px 8px;background:#1c2029;border:1px solid #2f3542;border-radius:6px;color:#e6e8ec';
+  txt.placeholder = 'Nhập text… (Enter = xuống dòng)';
   txt.oninput = () => {
     layer.text = txt.value;
-    nameSpan.textContent = `📝 ${layer.text.slice(0, 26)}`;
+    nameSpan.textContent = `📝 ${(layer.text || '').replace(/\n/g, ' ').slice(0, 26)}`;
     updatePreviewOverlay();
   };
   body.appendChild(fieldRow('Text', txt));
@@ -9384,27 +10320,91 @@ function renderAudioLayerItem(layer) {
 
 // ----- COMPOSITING (used both in preview and in final render) -----
 
+// Split text into display lines: honor explicit \n, then word-wrap each
+// paragraph to maxWidth. Long unbroken tokens (e.g. "aaaaaaaa…") are broken
+// character-by-character so the pill never overflows the frame.
+function wrapTextLines(ctx, text, maxWidth) {
+  const paras = String(text == null ? '' : text).split('\n');
+  const lines = [];
+  const pushWordBroken = (word, startCur) => {
+    // break a single over-long word by characters
+    let cur = startCur;
+    for (const ch of word) {
+      const test = cur + ch;
+      if (maxWidth > 0 && ctx.measureText(test).width > maxWidth && cur) {
+        lines.push(cur); cur = ch;
+      } else cur = test;
+    }
+    return cur;
+  };
+  for (const para of paras) {
+    if (para.trim() === '') { lines.push(''); continue; }
+    const words = para.split(/\s+/);
+    let cur = '';
+    for (const wd of words) {
+      const sep = cur ? ' ' : '';
+      const test = cur + sep + wd;
+      if (maxWidth > 0 && ctx.measureText(test).width > maxWidth) {
+        if (cur) { lines.push(cur); cur = ''; }
+        // if the word alone still exceeds the width, break it by characters
+        if (ctx.measureText(wd).width > maxWidth) {
+          cur = pushWordBroken(wd, '');
+        } else {
+          cur = wd;
+        }
+      } else {
+        cur = test;
+      }
+    }
+    if (cur) lines.push(cur);
+  }
+  return lines.length ? lines : [''];
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 function renderTextLayerToCtx(ctx, W, H, layer) {
+  const text = (layer.text == null ? '' : String(layer.text));
   const x = layer.xPct * W;
   const y = layer.yPct * H;
-  const fs = layer.fontSize * (W / 1080);   // scale font to output width
+  const fs = layer.fontSize * (W / 1080);
   ctx.save();
   ctx.font = `${layer.bold ? 700 : 400} ${fs}px "Inter Tight", "Helvetica", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const metrics = ctx.measureText(layer.text);
-  const tw = metrics.width;
-  const th = fs * 1.2;
-  // Background box
-  if (layer.bgAlpha > 0) {
+
+  const maxWidth = (layer.wrapPct || 0.9) * W;
+  const lines = wrapTextLines(ctx, text, maxWidth);
+  const lineH = fs * 1.25;
+  let tw = 0;
+  for (const ln of lines) tw = Math.max(tw, ctx.measureText(ln).width);
+  const th = lineH * lines.length;
+  const padX = fs * 0.55, padY = fs * 0.35;
+  const boxW = tw + padX * 2, boxH = th + padY * 2;
+
+  // Rounded pill background
+  if (layer.bgAlpha > 0 && (tw > 0 || lines.length > 1)) {
     ctx.globalAlpha = layer.bgAlpha;
     ctx.fillStyle = layer.bgColor;
-    const pad = fs * 0.35;
-    ctx.fillRect(x - tw/2 - pad, y - th/2 - pad/2, tw + pad * 2, th + pad);
+    roundRectPath(ctx, x - boxW / 2, y - boxH / 2, boxW, boxH, Math.min(boxH * 0.5, fs * 0.9));
+    ctx.fill();
     ctx.globalAlpha = 1;
   }
+
   ctx.fillStyle = layer.color;
-  ctx.fillText(layer.text, x, y);
+  const firstY = y - th / 2 + lineH / 2;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], x, firstY + i * lineH);
+  }
   ctx.restore();
 }
 
@@ -9509,10 +10509,12 @@ function layerBBox(layer, ctx, W, H) {
     const fs = layer.fontSize * (W / 1080);
     ctx.save();
     ctx.font = `${layer.bold ? 700 : 400} ${fs}px "Inter Tight","Helvetica",sans-serif`;
-    const tw = ctx.measureText(layer.text || ' ').width;
+    const lines = wrapTextLines(ctx, layer.text, (layer.wrapPct || 0.9) * W);
+    let tw = 0;
+    for (const ln of lines) tw = Math.max(tw, ctx.measureText(ln).width);
     ctx.restore();
-    const pad = fs * 0.35, th = fs * 1.2;
-    const bw = tw + pad * 2, bh = th + pad;
+    const lineH = fs * 1.25, padX = fs * 0.55, padY = fs * 0.35;
+    const bw = Math.max(tw, 8) + padX * 2, bh = lineH * lines.length + padY * 2;
     const cx = layer.xPct * W, cy = layer.yPct * H;
     return { cx, cy, w: bw, h: bh, x: cx - bw / 2, y: cy - bh / 2 };
   }
@@ -9644,13 +10646,10 @@ function onCanvasDblClick(e) {
   const p = pointerPos(e, canvas);
   const layer = layerAtPoint(p, ctx, canvas.width, canvas.height);
   if (layer && layer.type === 'text') {
-    const next = prompt('Sửa text:', layer.text);
-    if (next !== null) {
-      layer.text = next;
-      selectedLayerId = layer.id;
-      renderLayerLists();
-      updatePreviewOverlay();
-    }
+    selectedLayerId = layer.id;
+    // focus the side-panel textarea so the user can type + press Enter for newlines
+    const ta = document.querySelector(`textarea[data-layer-text="${layer.id}"]`);
+    if (ta) { ta.focus(); ta.select(); ta.scrollIntoView({ block: 'nearest' }); }
   }
 }
 
