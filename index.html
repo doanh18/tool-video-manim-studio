@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_71 — Crop is now a proper interactive tool: 8 draggable handles (4 corners + 4 edges) shown as blue squares, drag any of them to resize, drag inside to move the box, drag outside for a fresh box; rule-of-thirds guides + hover cursors. Live pixel-dimension label. (Full editor with text/image overlays from v3_70.) -->
+<!-- Manim Studio v38_18_3_72 — Portrait Q<!-- Manim Studio v38_18_3_71 — Crop is now a proper interactive tool: 8 draggable handles (4 corners + 4 edges) shown as blue squares, drag any of them to resize, drag inside to move the box, drag outside for a fresh box; rule-of-thirds guides + hover cursors. Live pixel-dimension label. (Full editor with text/image overlays from v3_70.) -->A auto-fit: when the question + question-image + options block is tall enough to push steps off-screen, the whole block is uniformly scaled down (min 0.5) so it takes at most ~68% of the space, guaranteeing steps always have room and stay visible when spoken. Steps still paginate into the remaining area. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6472,6 +6472,43 @@ function renderFrame(ctx, W, H, t) {
   // Compute the zoom transform parameters
   const questionBlockTop = cursorY - 10 * s;
 
+  // ===== AUTO-FIT: if the question + question-image + options block is so tall
+  // that it would push the steps off the bottom of the frame, uniformly shrink
+  // that block so the steps always have room and stay visible when spoken. =====
+  const csFitTop = cursorY;
+  let csFitScale = 1, csFitApplied = false;
+  {
+    const stepsBottomM = H - 100 * s;
+    const span = stepsBottomM - csFitTop;
+    ctx.save();
+    ctx.font = `600 ${18 * s}px "Inter Tight", system-ui, sans-serif`;
+    const qLines = wrapText(ctx, formatMathText(RS.qText), innerW);
+    let natH = qLines.length * (25 * s) + 16 * s;
+    if (RS.qImageEl) {
+      const iw0 = RS.qImageEl.naturalWidth || RS.qImageEl.width || 0;
+      const ih0 = RS.qImageEl.naturalHeight || RS.qImageEl.height || 0;
+      if (iw0 && ih0) natH += (innerW * 0.55) * (ih0 / iw0) + 20 * s + 18 * s;
+    }
+    ctx.font = `500 ${14 * s}px "JetBrains Mono", "Courier New", monospace`;
+    const gap0 = (RS.bgMediaEl ? 16 : 6) * s;
+    for (const opt of RS.options) {
+      const ln = wrapText(ctx, `${opt.letter}.   ${formatMathText(opt.text)}`, (W - PAD) - (PAD + 18 * s));
+      natH += ln.length * (22 * s) + gap0;
+    }
+    natH += 22 * s;
+    ctx.restore();
+    // top block may take at most ~68% of the space to the steps area (≥32% for steps)
+    const budgetH = span * 0.68;
+    if (natH > budgetH && natH > 0) csFitScale = Math.max(0.5, budgetH / natH);
+  }
+  if (csFitScale < 1) {
+    ctx.save();
+    ctx.translate(0, csFitTop);
+    ctx.scale(csFitScale, csFitScale);
+    ctx.translate(0, -csFitTop);
+    csFitApplied = true;
+  }
+
   // ⭐ Visual-hierarchy wrapper: dim + slightly shrink the whole Q/options block
   // when a step is being written. Applied as an outer save() around the block.
   let focusApplied = false;
@@ -6622,6 +6659,12 @@ function renderFrame(ctx, W, H, t) {
   // red steps below are always drawn at full opacity — they're the focus).
   if (focusApplied) {
     ctx.restore();
+  }
+  // Close the AUTO-FIT wrapper and convert cursorY to on-screen (scaled) space so
+  // the steps start right below the (possibly shrunk) question/options block.
+  if (csFitApplied) {
+    ctx.restore();
+    cursorY = csFitTop + (cursorY - csFitTop) * csFitScale;
   }
 
   // ==================== HANDWRITTEN STEPS (page-based) ====================
