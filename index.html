@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_72 — Portrait Q<!-- Manim Studio v38_18_3_71 — Crop is now a proper interactive tool: 8 draggable handles (4 corners + 4 edges) shown as blue squares, drag any of them to resize, drag inside to move the box, drag outside for a fresh box; rule-of-thirds guides + hover cursors. Live pixel-dimension label. (Full editor with text/image overlays from v3_70.) -->A auto-fit: when the question + question-image + options block is tall enough to push steps off-screen, the whole block is uniformly scaled down (min 0.5) so it takes at most ~68% of the space, guaranteeing steps always have room and stay visible when spoken. Steps still paginate into the remaining area. -->
+<!-- Manim Studio v38_18_3_73 — Upload destination popup now also takes a GOOGLE SHEET LINK (persisted + prefilled, parses spreadsheet id and #gid). Both the video upload flow and the cheatsheet upload write to the pasted sheet (and its gid tab for cheatsheets) instead of the hardcoded id. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1242,9 +1242,11 @@
     <div class="save-modal-inner">
       <button class="close-x" id="driveLinkClose" title="Close">×</button>
       <h3>☁️ Upload đích</h3>
-      <div class="subtitle">Dán link Google Drive folder để upload video vào đó · Enter = Done</div>
+      <div class="subtitle">Dán link Google Drive folder + link Google Sheet · Enter = Done</div>
       <input id="driveLinkInput" class="drive-link-input" type="text"
         placeholder="https://drive.google.com/drive/folders/..." spellcheck="false" autocomplete="off">
+      <input id="sheetLinkInput" class="drive-link-input" type="text"
+        placeholder="https://docs.google.com/spreadsheets/d/... (link Sheet)" spellcheck="false" autocomplete="off">
       <div class="drive-link-err" id="driveLinkErr"></div>
       <div class="drive-link-actions">
         <button class="action-btn" id="driveLinkCancel" style="justify-content:center">Huỷ</button>
@@ -3181,6 +3183,8 @@ const GSHEETS_ID = '1Oxzonh-jVkxty7w9v8eXjS10qPvacPfL6834eXrHmHg';
 const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
 // Last Drive folder link the user pasted in the upload popup (persisted, prefilled next time)
 const DRIVE_FOLDER_LINK_KEY = 'manim_studio_drive_folder_link_v1';
+// Last Google Sheet link the user pasted in the upload popup (persisted, prefilled next time)
+const SHEET_LINK_KEY = 'manim_studio_sheet_link_v1';
 
 let savedVideoBlob = null;      // Last rendered MP4 blob, held in memory
 let savedVideoFilename = '';    // Sanitized filename derived from topic
@@ -3440,18 +3444,20 @@ function hideCheatsheetSaveModal() {
 }
 
 // Write the Drive image link into the "file ảnh" column of tab gid=665236143.
-async function logCheatsheetToSheet(imageLink, token) {
+async function logCheatsheetToSheet(imageLink, token, sheetId, gid) {
+  const SID = sheetId || GSHEETS_ID;
+  const GID = (gid != null) ? gid : CHEATSHEET_SHEET_GID;
   // 1) resolve gid → sheet title
-  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GSHEETS_ID}?fields=sheets.properties(sheetId,title)`, { headers: { 'Authorization': `Bearer ${token}` } });
+  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SID}?fields=sheets.properties(sheetId,title)`, { headers: { 'Authorization': `Bearer ${token}` } });
   if (!metaRes.ok) throw new Error('Sheet meta HTTP ' + metaRes.status + ': ' + (await metaRes.text()).slice(0, 180));
   const meta = await metaRes.json();
-  const sheet = (meta.sheets || []).find(s => s.properties && s.properties.sheetId === CHEATSHEET_SHEET_GID);
-  if (!sheet) throw new Error('Không thấy tab gid ' + CHEATSHEET_SHEET_GID + ' trong spreadsheet.');
+  const sheet = (meta.sheets || []).find(s => s.properties && s.properties.sheetId === GID);
+  if (!sheet) throw new Error('Không thấy tab gid ' + GID + ' trong spreadsheet.');
   const title = sheet.properties.title;
   const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 
   // 2) read the sheet
-  const readRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GSHEETS_ID}/values/${encodeURIComponent(q(title) + '!A:AZ')}`, { headers: { 'Authorization': `Bearer ${token}` } });
+  const readRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SID}/values/${encodeURIComponent(q(title) + '!A:AZ')}`, { headers: { 'Authorization': `Bearer ${token}` } });
   if (!readRes.ok) throw new Error('Sheet read HTTP ' + readRes.status + ': ' + (await readRes.text()).slice(0, 180));
   const values = (await readRes.json()).values || [];
   if (!values.length) throw new Error('Tab "' + title + '" trống hoặc không đọc được header.');
@@ -3478,7 +3484,7 @@ async function logCheatsheetToSheet(imageLink, token) {
   // 4) write the link
   const colA1 = (idx) => { let s = '', n = idx + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
   const range = q(title) + '!' + colA1(colIdx) + nextRow;
-  const updRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GSHEETS_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+  const updRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values: [[imageLink]] })
@@ -3489,8 +3495,8 @@ async function logCheatsheetToSheet(imageLink, token) {
 
 async function uploadCheatsheetToDriveAndSheet() {
   if (!cheatsheetLastDataURL) { csSaveStatus('✗ Gen ảnh trước đã.', 'err'); return; }
-  let folderId;
-  try { folderId = await promptDriveFolder(); }
+  let folderId, sheetId, gid;
+  try { const d = await promptDriveFolder(); folderId = d.folderId; sheetId = d.sheetId; gid = d.gid; }
   catch (e) { if (e && e.message === '__cancel__') { csSaveStatus('Đã huỷ.'); return; } csSaveStatus('✗ ' + e.message, 'err'); return; }
   try {
     csSaveStatus('⏳ Google auth…');
@@ -3503,8 +3509,8 @@ async function uploadCheatsheetToDriveAndSheet() {
     const uploaded = await uploadBlobToDrive(blob, fname, folderId, token);
     const link = uploaded.webViewLink || ('https://drive.google.com/file/d/' + uploaded.id + '/view');
     csSaveStatus('⏳ Ghi link vào Sheet (cột "file ảnh")…');
-    const { row } = await logCheatsheetToSheet(link, token);
-    const sheetUrl = `https://docs.google.com/spreadsheets/d/${GSHEETS_ID}/edit#gid=${CHEATSHEET_SHEET_GID}`;
+    const { row } = await logCheatsheetToSheet(link, token, sheetId, gid);
+    const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit` + (gid != null ? `#gid=${gid}` : '');
     csSaveStatus(`✓ Xong · dòng ${row}. <a href="${link}" target="_blank" rel="noopener">Mở Drive</a> · <a href="${sheetUrl}" target="_blank" rel="noopener">Mở Sheet</a>`, 'ok');
   } catch (e) {
     console.error('[cheatsheet upload]', e);
@@ -9602,20 +9608,34 @@ function parseDriveFolderId(input) {
   return '';
 }
 
-// Popup asking WHERE to upload. Prefills the last-used link (persisted).
-// Resolves with a folderId; rejects with Error('__cancel__') if dismissed.
+// Parse a Google Sheets URL → { id, gid }
+function parseSheetUrl(input) {
+  const s = String(input || '').trim();
+  if (!s) return null;
+  const m = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  const id = m ? m[1] : (/^[a-zA-Z0-9_-]{20,}$/.test(s) ? s : '');
+  if (!id) return null;
+  const g = s.match(/[#&?]gid=(\d+)/);
+  return { id, gid: g ? parseInt(g[1], 10) : null };
+}
+
+// Popup asking WHERE to upload. Prefills the last-used links (persisted).
+// Resolves with { folderId, sheetId, gid }; rejects with Error('__cancel__') if dismissed.
 function promptDriveFolder() {
   return new Promise((resolve, reject) => {
     const modal  = document.getElementById('driveLinkModal');
     const input  = document.getElementById('driveLinkInput');
+    const sheetInput = document.getElementById('sheetLinkInput');
     const err    = document.getElementById('driveLinkErr');
     const doneBtn   = document.getElementById('driveLinkDone');
     const cancelBtn = document.getElementById('driveLinkCancel');
     const closeBtn  = document.getElementById('driveLinkClose');
 
-    let saved = '';
+    let saved = '', savedSheet = '';
     try { saved = localStorage.getItem(DRIVE_FOLDER_LINK_KEY) || ''; } catch (e) {}
+    try { savedSheet = localStorage.getItem(SHEET_LINK_KEY) || ''; } catch (e) {}
     input.value = saved || `https://drive.google.com/drive/folders/${GDRIVE_FOLDER_ID}`;
+    if (sheetInput) sheetInput.value = savedSheet || `https://docs.google.com/spreadsheets/d/${GSHEETS_ID}/edit`;
     err.textContent = '';
     modal.classList.add('show');
     setTimeout(() => { input.focus(); input.select(); }, 50);
@@ -9627,13 +9647,19 @@ function promptDriveFolder() {
       closeBtn.removeEventListener('click', onCancel);
       modal.removeEventListener('click', onBackdrop);
       input.removeEventListener('keydown', onKey);
+      if (sheetInput) sheetInput.removeEventListener('keydown', onKey);
     };
     const onDone = () => {
       const link = input.value.trim();
       const id = parseDriveFolderId(link);
-      if (!id) { err.textContent = 'Link folder không hợp lệ. Dán kiểu drive.google.com/drive/folders/…'; return; }
+      if (!id) { err.textContent = 'Link folder Drive không hợp lệ. Dán kiểu drive.google.com/drive/folders/…'; return; }
+      const sheetRaw = sheetInput ? sheetInput.value.trim() : '';
+      const sheet = parseSheetUrl(sheetRaw);
+      if (sheetRaw && !sheet) { err.textContent = 'Link Sheet không hợp lệ. Dán kiểu docs.google.com/spreadsheets/d/…'; return; }
       try { localStorage.setItem(DRIVE_FOLDER_LINK_KEY, link); } catch (e) {}
-      cleanup(); resolve(id);
+      try { if (sheetRaw) localStorage.setItem(SHEET_LINK_KEY, sheetRaw); } catch (e) {}
+      cleanup();
+      resolve({ folderId: id, sheetId: sheet ? sheet.id : GSHEETS_ID, gid: sheet ? sheet.gid : null });
     };
     const onCancel   = () => { cleanup(); reject(new Error('__cancel__')); };
     const onBackdrop = (e) => { if (e.target === modal) onCancel(); };
@@ -9646,6 +9672,7 @@ function promptDriveFolder() {
     closeBtn.addEventListener('click', onCancel);
     modal.addEventListener('click', onBackdrop);
     input.addEventListener('keydown', onKey);
+    if (sheetInput) sheetInput.addEventListener('keydown', onKey);
   });
 }
 
@@ -9655,9 +9682,10 @@ function promptDriveFolder() {
 // next empty row with STT+1 in the right columns (not a blind A/B append).
 function normHdr(h) { return String(h == null ? '' : h).trim().toLowerCase().replace(/\s+/g, ' '); }
 
-async function logToSheetSmart(scriptText, driveLink, token) {
+async function logToSheetSmart(scriptText, driveLink, token, sheetId) {
+  const SID = sheetId || GSHEETS_ID;
   // 1) Read the whole first sheet (A:AZ covers the log columns).
-  const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${GSHEETS_ID}/values/A:AZ`;
+  const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SID}/values/A:AZ`;
   const readRes = await fetch(readUrl, { headers: { 'Authorization': `Bearer ${token}` } });
   if (!readRes.ok) {
     const t = await readRes.text();
@@ -9718,7 +9746,7 @@ async function logToSheetSmart(scriptText, driveLink, token) {
   ];
   if (sttIdx >= 0) data.push({ range: `${colA1(sttIdx)}${nextRow}`, values: [[nextStt]] });
 
-  const updUrl = `https://sheets.googleapis.com/v4/spreadsheets/${GSHEETS_ID}/values:batchUpdate`;
+  const updUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SID}/values:batchUpdate`;
   const updRes = await fetch(updUrl, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -9738,10 +9766,12 @@ async function handleUploadFlow() {
     return;
   }
 
-  // Step 1 — ask WHERE to upload (popup, prefilled with last-used link).
-  let folderId;
+  // Step 1 — ask WHERE to upload (popup, prefilled with last-used links).
+  let folderId, sheetId;
   try {
-    folderId = await promptDriveFolder();
+    const dest = await promptDriveFolder();
+    folderId = dest.folderId;
+    sheetId = dest.sheetId;
   } catch (e) {
     if (e && e.message === '__cancel__') { saveModalStatus('Đã huỷ upload.', ''); return; }
     saveModalStatus('✗ ' + e.message, 'err');
@@ -9763,10 +9793,10 @@ async function handleUploadFlow() {
 
     saveModalStatus('⏳ Reading sheet & finding next row…');
     const scriptText = (document.getElementById('scriptText')?.value || '').trim();
-    const { nextStt, nextRow } = await logToSheetSmart(scriptText, driveLink, token);
+    const { nextStt, nextRow } = await logToSheetSmart(scriptText, driveLink, token, sheetId);
 
     const where = (nextStt != null) ? `STT ${nextStt}` : `row ${nextRow}`;
-    const sheetUrl = `https://docs.google.com/spreadsheets/d/${GSHEETS_ID}/edit#gid=0`;
+    const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
     saveModalStatus(
       `✓ Done · ${where}. <a href="${driveLink}" target="_blank" rel="noopener">Open in Drive</a> · ` +
       `<a href="${sheetUrl}" target="_blank" rel="noopener">Open Sheet</a>`,
