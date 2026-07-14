@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_73 — Upload destination popup now also takes a GOOGLE SHEET LINK (persisted + prefilled, parses spreadsheet id and #gid). Both the video upload flow and the cheatsheet upload write to the pasted sheet (and its gid tab for cheatsheets) instead of the hardcoded id. -->
+<!-- Manim Studio v38_18_3_74 — Upload popup: labeled the two inputs (📁 DRIVE FOLDER / 📊 GOOGLE SHEET). Fixed the pasted sheet not being honored — the video flow ignored the #gid and always wrote to the first tab, and the cheatsheet fell back to a hardcoded gid from the OLD file. Both now resolve the gid from the pasted link (no gid = first tab of that file). -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1242,11 +1242,13 @@
     <div class="save-modal-inner">
       <button class="close-x" id="driveLinkClose" title="Close">×</button>
       <h3>☁️ Upload đích</h3>
-      <div class="subtitle">Dán link Google Drive folder + link Google Sheet · Enter = Done</div>
+      <div class="subtitle">Dán link Drive folder + link Google Sheet · Enter = Done</div>
+      <label style="display:block;font-size:10px;letter-spacing:1px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;margin:8px 0 4px">📁 DRIVE FOLDER (nơi upload file)</label>
       <input id="driveLinkInput" class="drive-link-input" type="text"
         placeholder="https://drive.google.com/drive/folders/..." spellcheck="false" autocomplete="off">
+      <label style="display:block;font-size:10px;letter-spacing:1px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;margin:8px 0 4px">📊 GOOGLE SHEET (file + tab để ghi link)</label>
       <input id="sheetLinkInput" class="drive-link-input" type="text"
-        placeholder="https://docs.google.com/spreadsheets/d/... (link Sheet)" spellcheck="false" autocomplete="off">
+        placeholder="https://docs.google.com/spreadsheets/d/.../edit#gid=..." spellcheck="false" autocomplete="off">
       <div class="drive-link-err" id="driveLinkErr"></div>
       <div class="drive-link-actions">
         <button class="action-btn" id="driveLinkCancel" style="justify-content:center">Huỷ</button>
@@ -3446,18 +3448,23 @@ function hideCheatsheetSaveModal() {
 // Write the Drive image link into the "file ảnh" column of tab gid=665236143.
 async function logCheatsheetToSheet(imageLink, token, sheetId, gid) {
   const SID = sheetId || GSHEETS_ID;
-  const GID = (gid != null) ? gid : CHEATSHEET_SHEET_GID;
-  // 1) resolve gid → sheet title
-  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SID}?fields=sheets.properties(sheetId,title)`, { headers: { 'Authorization': `Bearer ${token}` } });
-  if (!metaRes.ok) throw new Error('Sheet meta HTTP ' + metaRes.status + ': ' + (await metaRes.text()).slice(0, 180));
-  const meta = await metaRes.json();
-  const sheet = (meta.sheets || []).find(s => s.properties && s.properties.sheetId === GID);
-  if (!sheet) throw new Error('Không thấy tab gid ' + GID + ' trong spreadsheet.');
-  const title = sheet.properties.title;
+  // Use the tab from the pasted link. Only fall back to the built-in gid when the
+  // pasted sheet IS the default one — otherwise a foreign gid would be wrong.
+  const GID = (gid != null) ? gid : (SID === GSHEETS_ID ? CHEATSHEET_SHEET_GID : null);
+  let title = '';
+  if (GID != null) {
+    const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SID}?fields=sheets.properties(sheetId,title)`, { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!metaRes.ok) throw new Error('Sheet meta HTTP ' + metaRes.status + ': ' + (await metaRes.text()).slice(0, 180));
+    const meta = await metaRes.json();
+    const sheet = (meta.sheets || []).find(s => s.properties && s.properties.sheetId === GID);
+    if (!sheet) throw new Error('Không thấy tab gid ' + GID + ' trong file Sheet này.');
+    title = sheet.properties.title;
+  }
   const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+  const prefix = title ? q(title) + '!' : '';
 
   // 2) read the sheet
-  const readRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SID}/values/${encodeURIComponent(q(title) + '!A:AZ')}`, { headers: { 'Authorization': `Bearer ${token}` } });
+  const readRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SID}/values/${encodeURIComponent(prefix + 'A:AZ')}`, { headers: { 'Authorization': `Bearer ${token}` } });
   if (!readRes.ok) throw new Error('Sheet read HTTP ' + readRes.status + ': ' + (await readRes.text()).slice(0, 180));
   const values = (await readRes.json()).values || [];
   if (!values.length) throw new Error('Tab "' + title + '" trống hoặc không đọc được header.');
@@ -3483,7 +3490,7 @@ async function logCheatsheetToSheet(imageLink, token, sheetId, gid) {
 
   // 4) write the link
   const colA1 = (idx) => { let s = '', n = idx + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
-  const range = q(title) + '!' + colA1(colIdx) + nextRow;
+  const range = prefix + colA1(colIdx) + nextRow;
   const updRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -9682,10 +9689,25 @@ function promptDriveFolder() {
 // next empty row with STT+1 in the right columns (not a blind A/B append).
 function normHdr(h) { return String(h == null ? '' : h).trim().toLowerCase().replace(/\s+/g, ' '); }
 
-async function logToSheetSmart(scriptText, driveLink, token, sheetId) {
+// Resolve a gid → sheet tab title. Returns '' when gid is null (use first tab).
+async function resolveSheetTitle(sheetId, gid, token) {
+  if (gid == null) return '';
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties(sheetId,title)`, { headers: { 'Authorization': `Bearer ${token}` } });
+  if (!res.ok) throw new Error('Sheet meta HTTP ' + res.status + ': ' + (await res.text()).slice(0, 180));
+  const meta = await res.json();
+  const s = (meta.sheets || []).find(x => x.properties && x.properties.sheetId === gid);
+  if (!s) throw new Error('Không thấy tab gid ' + gid + ' trong file Sheet này.');
+  return s.properties.title;
+}
+function quoteSheetTitle(t) { return `'${String(t).replace(/'/g, "''")}'`; }
+
+async function logToSheetSmart(scriptText, driveLink, token, sheetId, gid) {
   const SID = sheetId || GSHEETS_ID;
-  // 1) Read the whole first sheet (A:AZ covers the log columns).
-  const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SID}/values/A:AZ`;
+  // Honor the tab (#gid=…) from the pasted link; blank = first tab.
+  const title = await resolveSheetTitle(SID, (gid == null ? null : gid), token);
+  const prefix = title ? quoteSheetTitle(title) + '!' : '';
+  // 1) Read the target tab (A:AZ covers the log columns).
+  const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SID}/values/${encodeURIComponent(prefix + 'A:AZ')}`;
   const readRes = await fetch(readUrl, { headers: { 'Authorization': `Bearer ${token}` } });
   if (!readRes.ok) {
     const t = await readRes.text();
@@ -9741,10 +9763,10 @@ async function logToSheetSmart(scriptText, driveLink, token, sheetId) {
   //    already sitting in other columns of that row are preserved.
   const colA1 = (idx) => { let s = '', n = idx + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
   const data = [
-    { range: `${colA1(scriptIdx)}${nextRow}`, values: [[scriptText]] },
-    { range: `${colA1(linkIdx)}${nextRow}`,   values: [[driveLink]] }
+    { range: `${prefix}${colA1(scriptIdx)}${nextRow}`, values: [[scriptText]] },
+    { range: `${prefix}${colA1(linkIdx)}${nextRow}`,   values: [[driveLink]] }
   ];
-  if (sttIdx >= 0) data.push({ range: `${colA1(sttIdx)}${nextRow}`, values: [[nextStt]] });
+  if (sttIdx >= 0) data.push({ range: `${prefix}${colA1(sttIdx)}${nextRow}`, values: [[nextStt]] });
 
   const updUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SID}/values:batchUpdate`;
   const updRes = await fetch(updUrl, {
@@ -9767,11 +9789,12 @@ async function handleUploadFlow() {
   }
 
   // Step 1 — ask WHERE to upload (popup, prefilled with last-used links).
-  let folderId, sheetId;
+  let folderId, sheetId, sheetGid;
   try {
     const dest = await promptDriveFolder();
     folderId = dest.folderId;
     sheetId = dest.sheetId;
+    sheetGid = dest.gid;
   } catch (e) {
     if (e && e.message === '__cancel__') { saveModalStatus('Đã huỷ upload.', ''); return; }
     saveModalStatus('✗ ' + e.message, 'err');
@@ -9793,10 +9816,10 @@ async function handleUploadFlow() {
 
     saveModalStatus('⏳ Reading sheet & finding next row…');
     const scriptText = (document.getElementById('scriptText')?.value || '').trim();
-    const { nextStt, nextRow } = await logToSheetSmart(scriptText, driveLink, token, sheetId);
+    const { nextStt, nextRow } = await logToSheetSmart(scriptText, driveLink, token, sheetId, sheetGid);
 
     const where = (nextStt != null) ? `STT ${nextStt}` : `row ${nextRow}`;
-    const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+    const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit` + (sheetGid != null ? `#gid=${sheetGid}` : '');
     saveModalStatus(
       `✓ Done · ${where}. <a href="${driveLink}" target="_blank" rel="noopener">Open in Drive</a> · ` +
       `<a href="${sheetUrl}" target="_blank" rel="noopener">Open Sheet</a>`,
