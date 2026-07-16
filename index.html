@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_74 — Upload popup: labeled the two inputs (📁 DRIVE FOLDER / 📊 GOOGLE SHEET). Fixed the pasted sheet not being honored — the video flow ignored the #gid and always wrote to the first tab, and the cheatsheet fell back to a hardcoded gid from the OLD file. Both now resolve the gid from the pasted link (no gid = first tab of that file). -->
+<!-- Manim Studio v38_18_3_78 — Fix: a NORMAL answer option no longer auto-converts "num/den" into a stacked fraction (e.g. IPv6 "2001:0db8:8080:2345/64" stayed literal). formatMathText got an allowFractions flag; normal options pass false. Use the per-option Phân số format for real fractions. Question text keeps auto-fractions. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -240,7 +240,10 @@
   .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
 
   /* OPTIONS */
-  .opt-row { display: grid; grid-template-columns: 30px 1fr 28px 22px; gap: 8px; margin-bottom: 5px; }
+  .opt-row { display: grid; grid-template-columns: 30px 1fr auto 28px 22px; gap: 8px; margin-bottom: 5px; align-items: center; }
+  .opt-fmt { background: #12151b; border: 1px solid var(--border, #2f3542); border-radius: 5px; color: #b9bfc9; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; padding: 6px 4px; cursor: pointer; }
+  .opt-frac { min-width: 0; }
+  .opt-frac .opt-num, .opt-frac .opt-den { min-width: 0; }
   .opt-remove {
     background: transparent;
     border: 1px solid var(--border);
@@ -1514,7 +1517,12 @@
       </div>
       <div class="section-body">
         <div class="field">
-          <label class="label" id="qTextLabel">Question Text</label>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <label class="label" id="qTextLabel" style="margin:0">Question Text</label>
+            <label class="portrait-only" style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-faint);font-family:'JetBrains Mono',monospace" title="Cỡ chữ câu hỏi (%)">
+              Aa <input type="number" id="qFontScale" value="100" min="50" max="200" step="5" style="width:58px;padding:4px 6px;background:#12151b;border:1px solid var(--border,#333);border-radius:5px;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:11px">%
+            </label>
+          </div>
           <input class="input" id="qText" value="The cube of 8 is">
         </div>
         <div class="field portrait-only">
@@ -1655,29 +1663,58 @@
         </div>
 
         <div class="portrait-only">
-          <label class="label">Answer Options · Click ◉ to mark correct (chọn nhiều được)</label>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <label class="label" style="margin:0">Answer Options · Click ◉ to mark correct (chọn nhiều được)</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-faint);font-family:'JetBrains Mono',monospace" title="Cỡ chữ đáp án (%)">
+              Aa <input type="number" id="optFontScale" value="100" min="50" max="200" step="5" style="width:58px;padding:4px 6px;background:#12151b;border:1px solid var(--border,#333);border-radius:5px;color:#e6e8ec;font-family:'JetBrains Mono',monospace;font-size:11px">%
+            </label>
+          </div>
           <div id="optRows">
             <div class="opt-row">
               <div class="opt-letter">A</div>
-              <input class="input" value="16">
+              <input class="input opt-text" value="16">
+              <span class="opt-frac" style="display:none;align-items:center;gap:4px;flex:1">
+                <input class="input opt-num" placeholder="tử" style="text-align:center">
+                <span style="color:#9aa0ac;font-weight:700">/</span>
+                <input class="input opt-den" placeholder="mẫu" style="text-align:center">
+              </span>
+              <select class="opt-fmt" title="Định dạng đáp án"><option value="normal">Thường</option><option value="fraction">Phân số</option></select>
               <div class="opt-check">◯</div>
               <button type="button" class="opt-remove" title="Xoá đáp án">✕</button>
             </div>
             <div class="opt-row">
               <div class="opt-letter">B</div>
-              <input class="input" value="64">
+              <input class="input opt-text" value="64">
+              <span class="opt-frac" style="display:none;align-items:center;gap:4px;flex:1">
+                <input class="input opt-num" placeholder="tử" style="text-align:center">
+                <span style="color:#9aa0ac;font-weight:700">/</span>
+                <input class="input opt-den" placeholder="mẫu" style="text-align:center">
+              </span>
+              <select class="opt-fmt" title="Định dạng đáp án"><option value="normal">Thường</option><option value="fraction">Phân số</option></select>
               <div class="opt-check">◯</div>
               <button type="button" class="opt-remove" title="Xoá đáp án">✕</button>
             </div>
             <div class="opt-row">
               <div class="opt-letter">C</div>
-              <input class="input" value="128">
+              <input class="input opt-text" value="128">
+              <span class="opt-frac" style="display:none;align-items:center;gap:4px;flex:1">
+                <input class="input opt-num" placeholder="tử" style="text-align:center">
+                <span style="color:#9aa0ac;font-weight:700">/</span>
+                <input class="input opt-den" placeholder="mẫu" style="text-align:center">
+              </span>
+              <select class="opt-fmt" title="Định dạng đáp án"><option value="normal">Thường</option><option value="fraction">Phân số</option></select>
               <div class="opt-check">◯</div>
               <button type="button" class="opt-remove" title="Xoá đáp án">✕</button>
             </div>
             <div class="opt-row is-answer">
               <div class="opt-letter">D</div>
-              <input class="input" value="512">
+              <input class="input opt-text" value="512">
+              <span class="opt-frac" style="display:none;align-items:center;gap:4px;flex:1">
+                <input class="input opt-num" placeholder="tử" style="text-align:center">
+                <span style="color:#9aa0ac;font-weight:700">/</span>
+                <input class="input opt-den" placeholder="mẫu" style="text-align:center">
+              </span>
+              <select class="opt-fmt" title="Định dạng đáp án"><option value="normal">Thường</option><option value="fraction">Phân số</option></select>
               <div class="opt-check">◉</div>
               <button type="button" class="opt-remove" title="Xoá đáp án">✕</button>
             </div>
@@ -3274,24 +3311,44 @@ function relabelOpts() {
 }
 function readOptData() {
   return Array.from(optRowsEl.querySelectorAll('.opt-row')).map(r => ({
-    text: r.querySelector('input.input')?.value || '',
-    isAnswer: r.classList.contains('is-answer')
+    text: r.querySelector('.opt-text')?.value || '',
+    isAnswer: r.classList.contains('is-answer'),
+    format: r.querySelector('.opt-fmt')?.value || 'normal',
+    num: r.querySelector('.opt-num')?.value || '',
+    den: r.querySelector('.opt-den')?.value || ''
   }));
 }
-function makeOptRow(text, isAnswer) {
+function applyOptFormat(row) {
+  const fmt = row.querySelector('.opt-fmt')?.value || 'normal';
+  const txt = row.querySelector('.opt-text');
+  const frac = row.querySelector('.opt-frac');
+  if (txt) txt.style.display = fmt === 'fraction' ? 'none' : '';
+  if (frac) frac.style.display = fmt === 'fraction' ? 'flex' : 'none';
+}
+function makeOptRow(text, isAnswer, format, num, den) {
   const row = document.createElement('div');
   row.className = 'opt-row' + (isAnswer ? ' is-answer' : '');
   const letter = document.createElement('div'); letter.className = 'opt-letter';
-  const inp = document.createElement('input'); inp.className = 'input'; inp.value = text || '';
+  const inp = document.createElement('input'); inp.className = 'input opt-text'; inp.value = text || '';
+  const frac = document.createElement('span'); frac.className = 'opt-frac';
+  frac.style.cssText = 'display:none;align-items:center;gap:4px;flex:1';
+  const numI = document.createElement('input'); numI.className = 'input opt-num'; numI.placeholder = 'tử'; numI.style.textAlign = 'center'; numI.value = num || '';
+  const slash = document.createElement('span'); slash.textContent = '/'; slash.style.cssText = 'color:#9aa0ac;font-weight:700';
+  const denI = document.createElement('input'); denI.className = 'input opt-den'; denI.placeholder = 'mẫu'; denI.style.textAlign = 'center'; denI.value = den || '';
+  frac.append(numI, slash, denI);
+  const sel = document.createElement('select'); sel.className = 'opt-fmt'; sel.title = 'Định dạng đáp án';
+  sel.innerHTML = '<option value="normal">Thường</option><option value="fraction">Phân số</option>';
+  sel.value = (format === 'fraction') ? 'fraction' : 'normal';
   const chk = document.createElement('div'); chk.className = 'opt-check'; chk.textContent = isAnswer ? '◉' : '◯';
   const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'opt-remove'; rm.title = 'Xoá đáp án'; rm.textContent = '✕';
-  row.append(letter, inp, chk, rm);
+  row.append(letter, inp, frac, sel, chk, rm);
+  applyOptFormat(row);
   return row;
 }
 function rebuildOptRows(data) {
   optRowsEl.innerHTML = '';
   (data && data.length ? data : [{ text: '', isAnswer: false }, { text: '', isAnswer: false }])
-    .forEach(o => optRowsEl.appendChild(makeOptRow(o.text, o.isAnswer)));
+    .forEach(o => optRowsEl.appendChild(makeOptRow(o.text, o.isAnswer, o.format, o.num, o.den)));
   relabelOpts();
 }
 
@@ -3314,8 +3371,20 @@ optRowsEl.addEventListener('click', (e) => {
   }
 });
 optRowsEl.addEventListener('input', (e) => {
-  if (e.target.matches('input.input')) { syncEditor(); scheduleSaveState(); }
+  if (e.target.matches('input.input')) { syncEditor(); scheduleSaveState(); renderActiveCanvas(isPlaying ? (audioContext.currentTime - playStartTime) : 0); }
 });
+// Toggle text ↔ fraction inputs when the format select changes
+optRowsEl.addEventListener('change', (e) => {
+  if (e.target.classList && e.target.classList.contains('opt-fmt')) {
+    applyOptFormat(e.target.closest('.opt-row'));
+    syncEditor();
+    setTimeout(scheduleSaveState, 30);
+    renderActiveCanvas(isPlaying ? (audioContext.currentTime - playStartTime) : 0);
+  }
+});
+// Ensure any pre-existing (static) rows reflect their current format
+optRowsEl.querySelectorAll('.opt-row').forEach(applyOptFormat);
+
 document.getElementById('addOptBtn').addEventListener('click', () => {
   const data = readOptData();
   if (data.length >= 8) { alert('Tối đa 8 đáp án'); return; }
@@ -5057,6 +5126,7 @@ function collectFormState() {
     'badgeText', 'badgeBgColor', 'badgeTextColor',
     'bgPreset', 'bgColor', 'bgLineColor', 'bgPattern',
     'qTextColor', 'stepColor',
+    'qFontScale', 'optFontScale',
     'nicheDesc',
     'scriptText'
   ];
@@ -5072,14 +5142,14 @@ function collectFormState() {
   state._videoMode = videoMode;
   state._videoStyle = videoStyle;
 
-  // Options (4 rows by default): preserve text + which one is the answer
-  state.options = Array.from(document.querySelectorAll('.opt-row')).map(row => {
-    const inp = row.querySelector('input.input');
-    return {
-      text: inp ? inp.value : '',
-      isAnswer: row.classList.contains('is-answer')
-    };
-  });
+  // Options: preserve text + which is the answer + format (normal/fraction) + num/den
+  state.options = Array.from(document.querySelectorAll('.opt-row')).map(row => ({
+    text: row.querySelector('.opt-text')?.value || '',
+    isAnswer: row.classList.contains('is-answer'),
+    format: row.querySelector('.opt-fmt')?.value || 'normal',
+    num: row.querySelector('.opt-num')?.value || '',
+    den: row.querySelector('.opt-den')?.value || ''
+  }));
 
   return state;
 }
@@ -5114,6 +5184,8 @@ function loadFormState() {
     setVal('bgPattern', s.bgPattern);
     setVal('qTextColor', s.qTextColor);
     setVal('stepColor', s.stepColor);
+    setVal('qFontScale', s.qFontScale);
+    setVal('optFontScale', s.optFontScale);
     const showStepsEl = document.getElementById('showStepsToggle');
     if (showStepsEl && typeof s.showSteps === 'boolean') showStepsEl.checked = s.showSteps;
     setVal('nicheDesc', s.nicheDesc);
@@ -5126,9 +5198,9 @@ function loadFormState() {
     if (s._videoStyle) videoStyle = s._videoStyle;
     if (typeof s.nicheDesc === 'string') nicheDescription = s.nicheDesc;
 
-    // Restore options (text + which are correct — supports N options + multi-correct)
+    // Restore options (text + correct + format/fraction — supports N options + multi-correct)
     if (Array.isArray(s.options) && s.options.length) {
-      rebuildOptRows(s.options.map(o => ({ text: o.text, isAnswer: !!o.isAnswer })));
+      rebuildOptRows(s.options.map(o => ({ text: o.text, isAnswer: !!o.isAnswer, format: o.format, num: o.num, den: o.den })));
     }
 
     return true;
@@ -5195,13 +5267,22 @@ function syncRenderStateFromEditor() {
   const bgPatternEl = document.getElementById('bgPattern');
   if (bgPatternEl) RS.bgPattern = bgPatternEl.value;
 
+  const qFontScaleEl = document.getElementById('qFontScale');
+  RS.qFontScale = qFontScaleEl ? Math.max(0.4, Math.min(2.5, (parseFloat(qFontScaleEl.value) || 100) / 100)) : 1;
+  const optFontScaleEl = document.getElementById('optFontScale');
+  RS.optFontScale = optFontScaleEl ? Math.max(0.4, Math.min(2.5, (parseFloat(optFontScaleEl.value) || 100) / 100)) : 1;
+
   const optRows = document.querySelectorAll('#optRows .opt-row');
   RS.options = [];
   optRows.forEach((row, i) => {
+    const fmt = row.querySelector('.opt-fmt')?.value || 'normal';
     RS.options.push({
       letter: String.fromCharCode(65 + i),
-      text: row.querySelectorAll('input')[0].value,
-      isAnswer: row.classList.contains('is-answer')
+      text: row.querySelector('.opt-text')?.value || '',
+      isAnswer: row.classList.contains('is-answer'),
+      format: fmt,
+      num: row.querySelector('.opt-num')?.value || '',
+      den: row.querySelector('.opt-den')?.value || ''
     });
   });
 
@@ -6489,38 +6570,42 @@ function renderFrame(ctx, W, H, t) {
   // that it would push the steps off the bottom of the frame, uniformly shrink
   // that block so the steps always have room and stay visible when spoken. =====
   const csFitTop = cursorY;
-  let csFitScale = 1, csFitApplied = false;
+  const uQ = (RS.qFontScale || 1), uO = (RS.optFontScale || 1);
+  let csFitScale = 1;
   {
     const stepsBottomM = H - 100 * s;
-    const span = stepsBottomM - csFitTop;
-    ctx.save();
-    ctx.font = `600 ${18 * s}px "Inter Tight", system-ui, sans-serif`;
-    const qLines = wrapText(ctx, formatMathText(RS.qText), innerW);
-    let natH = qLines.length * (25 * s) + 16 * s;
-    if (RS.qImageEl) {
-      const iw0 = RS.qImageEl.naturalWidth || RS.qImageEl.width || 0;
-      const ih0 = RS.qImageEl.naturalHeight || RS.qImageEl.height || 0;
-      if (iw0 && ih0) natH += (innerW * 0.55) * (ih0 / iw0) + 20 * s + 18 * s;
+    const budgetH = (stepsBottomM - csFitTop) * 0.68;
+    const measureTopH = (f) => {
+      const qf = f * uQ, of = f * uO;
+      ctx.save();
+      ctx.font = `600 ${18 * s * qf}px "Inter Tight", system-ui, sans-serif`;
+      const qLines = wrapText(ctx, formatMathText(RS.qText), innerW);
+      let h = qLines.length * (25 * s * qf) + 16 * s * qf;
+      if (RS.qImageEl) {
+        const iw0 = RS.qImageEl.naturalWidth || RS.qImageEl.width || 0;
+        const ih0 = RS.qImageEl.naturalHeight || RS.qImageEl.height || 0;
+        if (iw0 && ih0) h += (innerW * 0.55 * f) * (ih0 / iw0) + 20 * s * f + 18 * s * f;
+      }
+      ctx.font = `500 ${14 * s * of}px "JetBrains Mono", "Courier New", monospace`;
+      const gap0 = (RS.bgMediaEl ? 16 : 6) * s * of;
+      const optLH = 22 * s * of;
+      for (const opt of RS.options) {
+        if (opt.format === 'fraction') { h += 2.3 * optLH + gap0; continue; }
+        const ln = wrapText(ctx, `${opt.letter}.   ${formatMathText(opt.text, false)}`, (W - PAD) - (PAD + 18 * s));
+        h += ln.length * optLH + gap0;
+      }
+      h += 22 * s * of;
+      ctx.restore();
+      return h;
+    };
+    if (measureTopH(1) > budgetH) {
+      let f = 1;
+      while (f > 0.5 && measureTopH(f) > budgetH) f -= 0.04;
+      csFitScale = Math.max(0.5, f);
     }
-    ctx.font = `500 ${14 * s}px "JetBrains Mono", "Courier New", monospace`;
-    const gap0 = (RS.bgMediaEl ? 16 : 6) * s;
-    for (const opt of RS.options) {
-      const ln = wrapText(ctx, `${opt.letter}.   ${formatMathText(opt.text)}`, (W - PAD) - (PAD + 18 * s));
-      natH += ln.length * (22 * s) + gap0;
-    }
-    natH += 22 * s;
-    ctx.restore();
-    // top block may take at most ~68% of the space to the steps area (≥32% for steps)
-    const budgetH = span * 0.68;
-    if (natH > budgetH && natH > 0) csFitScale = Math.max(0.5, budgetH / natH);
   }
-  if (csFitScale < 1) {
-    ctx.save();
-    ctx.translate(0, csFitTop);
-    ctx.scale(csFitScale, csFitScale);
-    ctx.translate(0, -csFitTop);
-    csFitApplied = true;
-  }
+  const qFS = csFitScale * uQ;    // final question font scale
+  const optFS = csFitScale * uO;  // final option font scale
 
   // ⭐ Visual-hierarchy wrapper: dim + slightly shrink the whole Q/options block
   // when a step is being written. Applied as an outer save() around the block.
@@ -6570,18 +6655,18 @@ function renderFrame(ctx, W, H, t) {
 
   // QUESTION (left-aligned, wraps) — LARGER than options for clear hierarchy
   ctx.fillStyle = RS.qTextColor || '#111';
-  ctx.font = `600 ${18 * s}px "Inter Tight", system-ui, sans-serif`;
-  cursorY = drawQuestionLeft(ctx, formatMathText(RS.qText), PAD, cursorY, innerW, 25 * s, t);
-  cursorY += 16 * s;                    // gap below question
+  ctx.font = `600 ${18 * s * qFS}px "Inter Tight", system-ui, sans-serif`;
+  cursorY = drawQuestionLeft(ctx, formatMathText(RS.qText), PAD, cursorY, innerW, 25 * s * qFS, t);
+  cursorY += 16 * s * qFS;                    // gap below question
 
   // QUESTION IMAGE (optional) — centered white card below the question, shown throughout
   if (RS.qImageEl) {
     const iw0 = RS.qImageEl.naturalWidth || RS.qImageEl.width || 0;
     const ih0 = RS.qImageEl.naturalHeight || RS.qImageEl.height || 0;
     if (iw0 && ih0) {
-      const targetW = innerW * 0.55;
+      const targetW = innerW * 0.55 * csFitScale;
       const targetH = targetW * (ih0 / iw0);
-      const cardPad = 10 * s;
+      const cardPad = 10 * s * csFitScale;
       const cardW = targetW + cardPad * 2, cardH = targetH + cardPad * 2;
       const cardX = (W - cardW) / 2, cardY = cursorY;
       ctx.save();
@@ -6590,37 +6675,66 @@ function renderFrame(ctx, W, H, t) {
       roundRect(ctx, cardX, cardY, cardW, cardH, 14 * s, '#ffffff');
       ctx.restore();
       try { ctx.drawImage(RS.qImageEl, cardX + cardPad, cardY + cardPad, targetW, targetH); } catch (e) {}
-      cursorY = cardY + cardH + 18 * s;
+      cursorY = cardY + cardH + 18 * s * csFitScale;
     }
   }
 
   // OPTIONS (left-aligned, slight indent) — smaller than question; wraps long text
-  ctx.font = `500 ${14 * s}px "JetBrains Mono", "Courier New", monospace`;
-  const optLineH = 22 * s;              // per-line height when an option wraps
-  const optGap = (RS.bgMediaEl ? 16 : 6) * s;   // wider gap so option cards don't touch
+  ctx.font = `500 ${14 * s * optFS}px "JetBrains Mono", "Courier New", monospace`;
+  const optLineH = 22 * s * optFS; // per-line height when an option wraps
+  const optGap = (RS.bgMediaEl ? 16 : 6) * s * optFS;   // wider gap so option cards don't touch
   const optsStartY = cursorY;
-  const optIndent = PAD + 18 * s;       // small indent for letter marker
+  const optIndent = PAD + 18 * s * csFitScale;       // small indent for letter marker
   const optTextRight = W - PAD;         // right edge available for option text
   const optTextWidth = optTextRight - optIndent;
 
-  // Pre-wrap each option's full label ("A.   text...") into lines so a single
-  // long option flows onto a second/third row instead of overflowing.
+  // Pre-wrap each option. Fraction options carry num/den; normal ones wrap to lines.
   const optionWrapped = RS.options.map(opt => {
-    const fullText = `${opt.letter}.   ${formatMathText(opt.text)}`;
+    if (opt.format === 'fraction') return { opt, isFrac: true, num: opt.num, den: opt.den };
+    const fullText = `${opt.letter}.   ${formatMathText(opt.text, false)}`;
     const lines = wrapText(ctx, fullText, optTextWidth);
-    return { opt, fullText, lines };
+    return { opt, isFrac: false, fullText, lines };
   });
+
+  const optFontPx = 14 * s * optFS;
+  // Draw a stacked fraction (num over den with a bar). Returns its width.
+  const drawOptFraction = (num, den, x, topY, color) => {
+    ctx.save();
+    ctx.font = `700 ${optFontPx}px "JetBrains Mono", "Courier New", monospace`;
+    ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    const numW = ctx.measureText(String(num || '')).width, denW = ctx.measureText(String(den || '')).width;
+    const barW = Math.max(numW, denW, optFontPx * 0.8) + optFontPx * 0.4;
+    const cx = x + barW / 2;
+    ctx.fillText(String(num || ''), cx, topY + optFontPx);
+    ctx.fillRect(x, topY + optFontPx * 1.18, barW, Math.max(1.5, optFontPx * 0.07));
+    ctx.fillText(String(den || ''), cx, topY + optFontPx * 2.28);
+    ctx.restore();
+    return barW;
+  };
 
   let optY = optsStartY;
   optionWrapped.forEach((row) => {
-    const { opt, fullText, lines } = row;
+    const { opt, isFrac } = row;
     const reveal = answerRevealed && opt.isAnswer;
-    const blockHeight = lines.length * optLineH;
-    const baselineFirst = optY + 16 * s;   // baseline of first line
+    const weight = reveal ? 800 : 500;
+    let blockHeight, contentWidth;
+    if (isFrac) {
+      ctx.font = `700 ${optFontPx}px "JetBrains Mono", "Courier New", monospace`;
+      const numW = ctx.measureText(String(row.num || '')).width, denW = ctx.measureText(String(row.den || '')).width;
+      const fracW = Math.max(numW, denW, optFontPx * 0.8) + optFontPx * 0.4;
+      ctx.font = `${weight} ${optFontPx}px "JetBrains Mono", "Courier New", monospace`;
+      const lw = ctx.measureText(`${opt.letter}.  `).width;
+      contentWidth = lw + fracW;
+      blockHeight = optFontPx * 2.5;
+    } else {
+      blockHeight = row.lines.length * optLineH;
+      ctx.font = `${weight} ${optFontPx}px "JetBrains Mono", "Courier New", monospace`;
+      let widest = 0; for (const ln of row.lines) widest = Math.max(widest, ctx.measureText(ln).width);
+      contentWidth = widest;
+    }
+    const baselineFirst = optY + 16 * s * optFS;
 
-    // Over a photo/video background, put each option on a white rounded card
-    // (like a DMV-style quiz) so the text stays readable. Skip for the correct
-    // one when it's revealed (it gets its own yellow highlight below).
+    // White card behind each option over a photo/video background
     if (RS.bgMediaEl && !reveal) {
       ctx.save();
       ctx.shadowColor = 'rgba(0,0,0,0.16)';
@@ -6629,15 +6743,12 @@ function renderFrame(ctx, W, H, t) {
       ctx.restore();
     }
 
+    // Yellow highlight box for the revealed correct answer
     if (reveal) {
-      // Highlight box wraps the FULL multi-line option, sized to widest line
-      let widest = 0;
-      for (const ln of lines) widest = Math.max(widest, ctx.measureText(ln).width);
       const pad = 10 * s;
-      const boxW = widest + pad * 2;
+      const boxW = contentWidth + pad * 2;
       const boxH = blockHeight + 6 * s;
-      const boxX = optIndent - pad;
-      const boxY = optY;
+      const boxX = optIndent - pad, boxY = optY;
       const grad = ctx.createLinearGradient(boxX, boxY, boxX + boxW, boxY);
       grad.addColorStop(0, '#FCD34D');
       grad.addColorStop(1, '#FBBF24');
@@ -6645,19 +6756,19 @@ function renderFrame(ctx, W, H, t) {
       ctx.shadowBlur = 16 * s;
       roundRect(ctx, boxX, boxY, boxW, boxH, 6 * s, grad);
       ctx.shadowBlur = 0;
-      ctx.fillStyle = '#111';
-      ctx.font = `800 ${14 * s}px "JetBrains Mono", "Courier New", monospace`;
-      ctx.textAlign = 'left';
-      lines.forEach((ln, li) => {
-        ctx.fillText(ln, optIndent, baselineFirst + li * optLineH);
-      });
-      ctx.font = `500 ${14 * s}px "JetBrains Mono", "Courier New", monospace`;
+    }
+
+    // Content
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = `${weight} ${optFontPx}px "JetBrains Mono", "Courier New", monospace`;
+    if (isFrac) {
+      const letterStr = `${opt.letter}.  `;
+      ctx.fillText(letterStr, optIndent, optY + optFontPx * 1.55);
+      const lw = ctx.measureText(letterStr).width;
+      drawOptFraction(row.num, row.den, optIndent + lw, optY + 2 * s, '#111');
     } else {
-      ctx.fillStyle = '#111';
-      ctx.textAlign = 'left';
-      lines.forEach((ln, li) => {
-        ctx.fillText(ln, optIndent, baselineFirst + li * optLineH);
-      });
+      row.lines.forEach((ln, li) => ctx.fillText(ln, optIndent, baselineFirst + li * optLineH));
     }
 
     optY += blockHeight + optGap;
@@ -6672,12 +6783,6 @@ function renderFrame(ctx, W, H, t) {
   // red steps below are always drawn at full opacity — they're the focus).
   if (focusApplied) {
     ctx.restore();
-  }
-  // Close the AUTO-FIT wrapper and convert cursorY to on-screen (scaled) space so
-  // the steps start right below the (possibly shrunk) question/options block.
-  if (csFitApplied) {
-    ctx.restore();
-    cursorY = csFitTop + (cursorY - csFitTop) * csFitScale;
   }
 
   // ==================== HANDWRITTEN STEPS (page-based) ====================
@@ -6855,7 +6960,7 @@ function toSuperscript(str) {
 function toSubscript(str) {
   return String(str).split('').map(ch => SUBSCRIPT_MAP[ch] || ch).join('');
 }
-function formatMathText(raw) {
+function formatMathText(raw, allowFractions = true) {
   if (raw == null) return '';
   let s = String(raw);
 
@@ -6892,14 +6997,17 @@ function formatMathText(raw) {
        .replace(/\bpi\b/g, 'π').replace(/\binfinity\b/gi, '∞')
        .replace(/->/g, '→').replace(/=>/g, '⇒');
 
-  // 7) Common fractions to single glyphs
-  s = s.replace(/\b1\/2\b/g, '½').replace(/\b1\/3\b/g, '⅓').replace(/\b2\/3\b/g, '⅔')
-       .replace(/\b1\/4\b/g, '¼').replace(/\b3\/4\b/g, '¾')
-       .replace(/\b1\/8\b/g, '⅛').replace(/\b1\/5\b/g, '⅕').replace(/\b2\/5\b/g, '⅖');
-  // 7b) Any other "num/den" → inline fraction (raised numerator ⁄ lowered denominator)
-  //     e.g. 15/4 → ¹⁵⁄₄ , 22/7 → ²²⁄₇  (looks like a real fraction, fits one line)
-  s = s.replace(/(?<![\d.])(\d{1,4})\/(\d{1,4})(?![\d.])/g,
-        (m, n, d) => toSuperscript(n) + '⁄' + toSubscript(d));
+  // 7) Auto-fractions — ONLY when allowed. Normal answer options pass false so
+  //    things like an IPv6 "2001:0db8:8080:2345/64" or a date stay literal.
+  if (allowFractions) {
+    // Common fractions to single glyphs
+    s = s.replace(/\b1\/2\b/g, '½').replace(/\b1\/3\b/g, '⅓').replace(/\b2\/3\b/g, '⅔')
+         .replace(/\b1\/4\b/g, '¼').replace(/\b3\/4\b/g, '¾')
+         .replace(/\b1\/8\b/g, '⅛').replace(/\b1\/5\b/g, '⅕').replace(/\b2\/5\b/g, '⅖');
+    // Any other "num/den" → inline fraction (raised numerator ⁄ lowered denominator)
+    s = s.replace(/(?<![\d.])(\d{1,4})\/(\d{1,4})(?![\d.])/g,
+          (m, n, d) => toSuperscript(n) + '⁄' + toSubscript(d));
+  }
 
   return s;
 }
@@ -6991,23 +7099,40 @@ function drawQuestionLeft(ctx, text, startX, startY, maxWidth, lineH, t) {
       return;
     }
 
-    // Single "word" wider than maxWidth (e.g. "isaaaaaaaaaa...") — char-break it.
-    // Flush whatever is on the current line first, then walk the chars.
+    // Single "word" wider than maxWidth (e.g. "isaaaaaaaaaa...") — char-break it,
+    // but FIRST fill the remaining space on the current line so we don't leave an
+    // ugly gap (e.g. after "8"). Then continue breaking onto full lines.
+    const chars = Array.from(w);
+    let idx = 0;
     if (cur.length) {
+      // pack as many leading chars as fit after the current words + a space
+      let buf = '';
+      while (idx < chars.length) {
+        const test = buf + chars[idx];
+        if (curWidth + spaceW + ctx.measureText(test).width > maxWidth && buf) break;
+        buf = test; idx++;
+      }
+      if (buf) {
+        const bufW = ctx.measureText(buf).width;
+        cur.push({ text: buf, gIdx, width: bufW });
+        curWidth += spaceW + bufW;
+      }
       lines.push({ words: cur, width: curWidth });
       cur = [];
       curWidth = 0;
     }
+    // remaining chars → their own full-width lines
     let buf = '';
-    for (const ch of w) {
-      const test = buf + ch;
+    while (idx < chars.length) {
+      const test = buf + chars[idx];
       if (ctx.measureText(test).width > maxWidth && buf) {
         const bufW = ctx.measureText(buf).width;
         lines.push({ words: [{ text: buf, gIdx, width: bufW }], width: bufW });
-        buf = ch;
+        buf = chars[idx];
       } else {
         buf = test;
       }
+      idx++;
     }
     // Leave the last chunk on the current line so the NEXT word can still join it
     if (buf) {
@@ -7682,6 +7807,14 @@ document.querySelectorAll('.input').forEach(i => i.addEventListener('input', syn
 ['qTextColor', 'stepColor'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('input', () => { syncEditor(); scheduleSaveState(); });
+});
+// Question / option font-size (%) → live re-render
+['qFontScale', 'optFontScale'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => {
+    syncEditor(); scheduleSaveState();
+    renderActiveCanvas(isPlaying ? (audioContext.currentTime - playStartTime) : 0);
+  });
 });
 {
   const el = document.getElementById('showStepsToggle');
@@ -8905,7 +9038,15 @@ document.getElementById('genFromMineBtn').addEventListener('click', async () => 
   const correctLetters = [];
   optRows.forEach((row, i) => {
     const letter = String.fromCharCode(65 + i);
-    const text = row.querySelectorAll('input')[0]?.value.trim() || '';
+    const fmt = row.querySelector('.opt-fmt')?.value || 'normal';
+    let text;
+    if (fmt === 'fraction') {
+      const num = (row.querySelector('.opt-num')?.value || '').trim();
+      const den = (row.querySelector('.opt-den')?.value || '').trim();
+      text = (num || den) ? `${num}/${den}` : '';
+    } else {
+      text = (row.querySelector('.opt-text')?.value || '').trim();
+    }
     options[letter] = text;
     if (row.classList.contains('is-answer')) correctLetters.push(letter);
   });
