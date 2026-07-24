@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_97 — Root-caused the doubled logo: the folder watcher stayed armed after processing, so the cleaned MP4 you downloaded landed back in the same folder and got re-ingested as a fresh source, stamping a second plate over the one already burned in. Files matching the tool's own _clean naming are now skipped by the scanner and pre-marked as seen, auto-swap is blocked while an unsaved processed result is pending, and loading such a file directly raises a warning instead of silently double-branding. -->
+<!-- Manim Studio v38_18_3_98 — Sheet logging was landing on rows already in use: the next-free-row scan only looked at Script and final-link, so rows carrying caption_tiktok, hashtag_tiktok or thumbnail read as empty. Occupancy now counts every one of those columns, resolved by header on whatever sheet you paste. The target tab is also resolved and named in the status line every time — a link pasted without #gid= silently defaulted to the first tab, which is the other half of why rows looked wrong — and the destination popup now spells both rules out. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1523,6 +1523,11 @@
       <label style="display:block;font-size:10px;letter-spacing:1px;color:#9aa0ac;font-family:'JetBrains Mono',monospace;margin:8px 0 4px">📊 GOOGLE SHEET (file + tab để ghi link)</label>
       <input id="sheetLinkInput" class="drive-link-input" type="text"
         placeholder="https://docs.google.com/spreadsheets/d/.../edit#gid=..." spellcheck="false" autocomplete="off">
+      <div style="font-size:10px;line-height:1.55;color:#6b7280;font-family:'JetBrains Mono',monospace;margin:5px 0 0">
+        ⚠ Copy link khi đang MỞ ĐÚNG TAB muốn ghi — link phải có <b style="color:#9aa0ac">#gid=…</b> ở cuối.
+        Thiếu <b style="color:#9aa0ac">#gid=</b> thì Google mặc định ghi vào <b style="color:#9aa0ac">tab đầu tiên</b> của file.
+        Dòng ghi vào là dòng trống đầu tiên tính theo các cột Script · caption · hashtag · thumbnail · final link video.
+      </div>
       <div class="drive-link-err" id="driveLinkErr"></div>
       <div class="drive-link-actions">
         <button class="action-btn" id="driveLinkCancel" style="justify-content:center">Huỷ</button>
@@ -10515,11 +10520,16 @@ function normHdr(h) { return String(h == null ? '' : h).trim().toLowerCase().rep
 
 // Resolve a gid → sheet tab title. Returns '' when gid is null (use first tab).
 async function resolveSheetTitle(sheetId, gid, token) {
-  if (gid == null) return '';
   const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties(sheetId,title)`, { headers: { 'Authorization': `Bearer ${token}` } });
   if (!res.ok) throw new Error('Sheet meta HTTP ' + res.status + ': ' + (await res.text()).slice(0, 180));
   const meta = await res.json();
-  const s = (meta.sheets || []).find(x => x.properties && x.properties.sheetId === gid);
+  const sheets = meta.sheets || [];
+  if (gid == null) {
+    // Link dán không kèm #gid= → Google mặc định tab đầu tiên. Trả về tên thật
+    // để báo cho người dùng biết mình đang ghi vào tab nào.
+    return (sheets[0] && sheets[0].properties && sheets[0].properties.title) || '';
+  }
+  const s = sheets.find(x => x.properties && x.properties.sheetId === gid);
   if (!s) throw new Error('Không thấy tab gid ' + gid + ' trong file Sheet này.');
   return s.properties.title;
 }
@@ -10529,6 +10539,7 @@ async function logToSheetSmart(scriptText, driveLink, token, sheetId, gid) {
   const SID = sheetId || GSHEETS_ID;
   // Honor the tab (#gid=…) from the pasted link; blank = first tab.
   const title = await resolveSheetTitle(SID, (gid == null ? null : gid), token);
+  const autoTab = (gid == null);
   const prefix = title ? quoteSheetTitle(title) + '!' : '';
   // 1) Read the target tab (A:AZ covers the log columns).
   const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SID}/values/${encodeURIComponent(prefix + 'A:AZ')}`;
@@ -10551,6 +10562,24 @@ async function logToSheetSmart(scriptText, driveLink, token, sheetId, gid) {
   const scriptIdx = findIdx(h => h === 'script' || h.startsWith('script'));
   const linkIdx   = findIdx(h => h === 'final link video' || (h.includes('final') && h.includes('link') && h.includes('video')));
 
+  // Mọi cột "có nội dung thật" — dùng để biết hàng nào đã dùng rồi.
+  // Trước đây chỉ xét Script + final link, nên hàng nào mới điền
+  // caption/hashtag/thumbnail vẫn bị coi là trống → ghi đè lên.
+  const findAll = (matcher) => {
+    const out = [];
+    for (let i = 0; i < headers.length; i++) if (matcher(normHdr(headers[i]))) out.push(i);
+    return out;
+  };
+  const contentIdxs = [];
+  const addIdx = (i) => { if (i >= 0 && contentIdxs.indexOf(i) < 0) contentIdxs.push(i); };
+  addIdx(scriptIdx);
+  addIdx(linkIdx);
+  findAll(h => h.includes('caption')).forEach(addIdx);
+  findAll(h => h.includes('hashtag')).forEach(addIdx);
+  findAll(h => h.includes('thumbnail') || h.includes('thumb')).forEach(addIdx);
+  findAll(h => h.includes('final') && h.includes('link')).forEach(addIdx);
+  const contentNames = contentIdxs.map(i => String(headers[i] || '?'));
+
   const missing = [];
   if (scriptIdx < 0) missing.push('Script');
   if (linkIdx < 0)   missing.push('final link video');
@@ -10564,11 +10593,14 @@ async function logToSheetSmart(scriptText, driveLink, token, sheetId, gid) {
   //    off Script/link keeps us at the true next entry (e.g. row 253).
   let lastContentRow = 1; // header is row 1
   for (let r = 1; r < values.length; r++) {
-    const sc = values[r] && values[r][scriptIdx];
-    const lk = values[r] && values[r][linkIdx];
-    if ((sc != null && String(sc).trim() !== '') || (lk != null && String(lk).trim() !== '')) {
-      lastContentRow = r + 1;   // 1-based spreadsheet row
+    const row = values[r];
+    if (!row) continue;
+    let used = false;
+    for (const ci of contentIdxs) {
+      const v = row[ci];
+      if (v != null && String(v).trim() !== '') { used = true; break; }
     }
+    if (used) lastContentRow = r + 1;   // 1-based spreadsheet row
   }
   const nextRow = lastContentRow + 1;
 
@@ -10602,7 +10634,7 @@ async function logToSheetSmart(scriptText, driveLink, token, sheetId, gid) {
     const t = await updRes.text();
     throw new Error(`Sheet write HTTP ${updRes.status}: ${t.slice(0, 200)}`);
   }
-  return { nextStt, nextRow };
+  return { nextStt, nextRow, contentNames, tab: title, autoTab };
 }
 
 // ===== Full upload flow (button handler) =====
@@ -10640,9 +10672,11 @@ async function handleUploadFlow() {
 
     saveModalStatus('⏳ Reading sheet & finding next row…');
     const scriptText = (document.getElementById('scriptText')?.value || '').trim();
-    const { nextStt, nextRow } = await logToSheetSmart(scriptText, driveLink, token, sheetId, sheetGid);
+    const res = await logToSheetSmart(scriptText, driveLink, token, sheetId, sheetGid);
+    const { nextStt, nextRow } = res;
 
-    const where = (nextStt != null) ? `STT ${nextStt}` : `row ${nextRow}`;
+    const tabTxt = res.tab ? `tab "${res.tab}"${res.autoTab ? ' (link không có #gid= → lấy tab đầu tiên)' : ''} · ` : '';
+    const where = tabTxt + ((nextStt != null) ? `STT ${nextStt} · dòng ${nextRow}` : `dòng ${nextRow}`);
     const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit` + (sheetGid != null ? `#gid=${sheetGid}` : '');
     saveModalStatus(
       `✓ Done · ${where}. <a href="${driveLink}" target="_blank" rel="noopener">Open in Drive</a> · ` +
@@ -13227,8 +13261,11 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
           const uploaded = await uploadBlobToDrive(o.blob, o.name, folderId, token);
           const driveLink = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
           batchStatus(`⏳ ${n + 1}/${PM_OUT.length} · Ghi hàng tiếp theo vào Sheet…`);
-          const { nextStt, nextRow } = await logToSheetSmart(o.script, driveLink, token, sheetId, sheetGid);
-          links.push({ name: o.name, driveLink, where: (nextStt != null) ? `STT ${nextStt}` : `row ${nextRow}` });
+          const lg = await logToSheetSmart(o.script, driveLink, token, sheetId, sheetGid);
+          if (n === 0 && lg.tab) {
+            batchStatus(`ℹ Ghi vào tab "${lg.tab}"${lg.autoTab ? ' (link không có #gid= → tab đầu tiên)' : ''}…`);
+          }
+          links.push({ name: o.name, driveLink, where: (lg.nextStt != null) ? `STT ${lg.nextStt} · dòng ${lg.nextRow}` : `dòng ${lg.nextRow}` });
         }
         const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit` + (sheetGid != null ? `#gid=${sheetGid}` : '');
         batchStatus(
