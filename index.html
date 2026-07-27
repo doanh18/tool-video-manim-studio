@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_101 — Sheet row targeting: a row now counts as used only when Script, caption, caption_tiktok or final link video holds real text, so hashtag and thumbnail template fills no longer push the write past the end of the grid (the HTTP 400 exceeds grid limits error). Whitespace, nbsp and lone apostrophe or dash cells read as empty. If the next row really is past the sheet size, the tab is extended first instead of failing, and the status line reports the last row with text, which column triggered it and any rows added. -->
+<!-- Manim Studio v38_18_3_102 — Sheet row targeting rewritten: the write now goes to the FIRST empty row scanned top-down across Script, caption, caption_tiktok and final link video, so leftover junk sitting near the bottom of the sheet no longer drags the write to row 1000+. Cells produced by formulas are read as empty, whole columns filled by ARRAYFORMULA are dropped from the check, and 1-2 row separators inside the table are stepped over. STT is derived only from rows above the target. The status line reports the target row, any stray data below it and any formula columns skipped. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1526,7 +1526,7 @@
       <div style="font-size:10px;line-height:1.55;color:#6b7280;font-family:'JetBrains Mono',monospace;margin:5px 0 0">
         ⚠ Copy link khi đang MỞ ĐÚNG TAB muốn ghi — link phải có <b style="color:#9aa0ac">#gid=…</b> ở cuối.
         Thiếu <b style="color:#9aa0ac">#gid=</b> thì Google mặc định ghi vào <b style="color:#9aa0ac">tab đầu tiên</b> của file.
-        Dòng ghi vào = ngay sau dòng cuối cùng có chữ ở 1 trong 4 cột <b style="color:#9aa0ac">Script · caption · caption_tiktok · final link video</b>. Sheet hết dòng thì app tự nới thêm.
+        Dòng ghi vào = <b style="color:#9aa0ac">dòng trống đầu tiên</b> tính từ trên xuống, xét 4 cột <b style="color:#9aa0ac">Script · caption · caption_tiktok · final link video</b>. Ô do công thức sinh ra và rác nằm tít dưới đáy sheet đều bị bỏ qua.
       </div>
       <div class="drive-link-err" id="driveLinkErr"></div>
       <div class="drive-link-actions">
@@ -10745,6 +10745,19 @@ async function logToSheetSmart(scriptText, driveLink, token, sheetId, gid) {
   const values = readData.values || [];
   if (values.length === 0) throw new Error('Sheet trống hoặc không đọc được header (A:AZ).');
 
+  // Đọc lần 2 ở chế độ FORMULA: ô nào là công thức (ARRAYFORMULA / kéo tay
+  // xuống tận đáy) thì không được coi là "người đã dùng dòng đó".
+  let formulas = [];
+  try {
+    const fRes = await fetch(readUrl + '?valueRenderOption=FORMULA', { headers: { 'Authorization': `Bearer ${token}` } });
+    if (fRes.ok) formulas = (await fRes.json()).values || [];
+  } catch (e) { formulas = []; }
+  const isFormulaCell = (r, c) => {
+    const row = formulas[r];
+    const v = row && row[c];
+    return typeof v === 'string' && v.charAt(0) === '=';
+  };
+
   // 2) Locate columns by header name (row 1).
   const headers = values[0];
   const findIdx = (matcher) => {
@@ -10790,26 +10803,63 @@ async function logToSheetSmart(scriptText, driveLink, token, sheetId, gid) {
   //    (status, accounts…) may be pre-filled by a template all the way down to the
   //    grid limit, which would otherwise push us past the end of the sheet. Keying
   //    off Script/link keeps us at the true next entry (e.g. row 253).
-  let lastContentRow = 1; // header is row 1
-  let lastHitCol = '';    // cột nào khiến dòng cuối được tính là đã dùng
-  for (let r = 1; r < values.length; r++) {
-    const row = values[r];
-    if (!row) continue;
-    let hit = -1;
-    for (const ci of contentIdxs) {
-      if (hasText(row[ci])) { hit = ci; break; }
+  // Cột nào bị công thức đổ kín (>=80% ô có chữ là công thức, và nhiều hơn 30 ô)
+  // thì loại khỏi phép xét — đó là cột template, không phản ánh dòng đã dùng.
+  const autoCols = [];
+  contentIdxs.forEach(ci => {
+    let filled = 0, formula = 0;
+    for (let r = 1; r < values.length; r++) {
+      if (hasText(values[r] && values[r][ci])) { filled++; if (isFormulaCell(r, ci)) formula++; }
     }
-    if (hit >= 0) {
-      lastContentRow = r + 1;   // 1-based spreadsheet row
-      lastHitCol = String(headers[hit] || '?');
-    }
-  }
-  const nextRow = lastContentRow + 1;
+    if (filled >= 30 && formula >= filled * 0.8) autoCols.push(ci);
+  });
+  let checkIdxs = contentIdxs.filter(ci => autoCols.indexOf(ci) < 0);
+  if (!checkIdxs.length) checkIdxs = contentIdxs.slice();
+  const autoColNames = autoCols.map(i => String(headers[i] || '?'));
 
+  const rowUsed = (r) => {
+    const row = values[r];
+    if (!row) return -1;
+    for (const ci of checkIdxs) {
+      if (hasText(row[ci]) && !isFormulaCell(r, ci)) return ci;
+    }
+    return -1;
+  };
+
+  // Dòng ghi = DÒNG TRỐNG ĐẦU TIÊN tính từ trên xuống (row 98 có chữ, 99 trống → ghi 99).
+  // Quét kiểu này miễn nhiễm với rác nằm tít dưới đáy sheet (vd dòng 1000),
+  // thứ đã đẩy lượt ghi ra ngoài lưới ở các bản trước.
+  let nextRow = 0;
+  for (let r = 1; r < values.length; r++) {
+    if (rowUsed(r) >= 0) continue;
+    // Khe hở 1–2 dòng nằm giữa bảng (dòng phân cách) không phải chỗ để ghi:
+    // bỏ qua nếu ngay dưới khe vẫn còn cụm dữ liệu liền mạch.
+    let gapLen = 0;
+    while (r + gapLen < values.length && rowUsed(r + gapLen) < 0) gapLen++;
+    if (gapLen <= 2) {
+      let after = 0;
+      for (let k = r + gapLen; k < Math.min(values.length, r + gapLen + 6); k++) if (rowUsed(k) >= 0) after++;
+      if (after >= 3) { r += gapLen; continue; }
+    }
+    nextRow = r + 1;
+    break;
+  }
+  if (!nextRow) nextRow = values.length + 1;
+
+  // Chỉ để báo cáo: dòng cuối cùng còn chữ + cột gây ra nó.
+  let lastContentRow = 1, lastHitCol = '';
+  for (let r = 1; r < values.length; r++) {
+    const hit = rowUsed(r);
+    if (hit >= 0) { lastContentRow = r + 1; lastHitCol = String(headers[hit] || '?'); }
+  }
+  const strayBelow = (lastContentRow >= nextRow) ? lastContentRow : 0;
+
+  // STT: chỉ nhìn phần BÊN TRÊN dòng sắp ghi, để rác dưới đáy sheet
+  // (vd STT 999 ở dòng 1000) không kéo số nhảy lung tung.
   let nextStt = null;
   if (sttIdx >= 0) {
     let maxStt = 0;
-    for (let r = 1; r < values.length; r++) {
+    for (let r = 1; r < values.length && r < nextRow - 1; r++) {
       const raw = values[r] && values[r][sttIdx];
       const n = parseInt(String(raw == null ? '' : raw).replace(/[^\d-]/g, ''), 10);
       if (!isNaN(n) && n > maxStt) maxStt = n;
@@ -10854,7 +10904,7 @@ async function logToSheetSmart(scriptText, driveLink, token, sheetId, gid) {
     const t = await updRes.text();
     throw new Error(`Sheet write HTTP ${updRes.status}: ${t.slice(0, 200)}`);
   }
-  return { nextStt, nextRow, contentNames, tab: title, autoTab, lastContentRow, lastHitCol, grewRows };
+  return { nextStt, nextRow, contentNames, tab: title, autoTab, lastContentRow, lastHitCol, grewRows, strayBelow, autoColNames };
 }
 
 // ===== Full upload flow (button handler) =====
@@ -10896,9 +10946,10 @@ async function handleUploadFlow() {
     const { nextStt, nextRow } = res;
 
     const tabTxt = res.tab ? `tab "${res.tab}"${res.autoTab ? ' (link không có #gid= → lấy tab đầu tiên)' : ''} · ` : '';
-    const why = res.lastHitCol ? ` (dòng cuối có chữ: ${res.lastContentRow} · cột "${res.lastHitCol}")` : '';
+    const why = res.strayBelow ? ` · ⚠ còn dữ liệu tận dòng ${res.strayBelow} (cột "${res.lastHitCol}") — đã bỏ qua` : '';
+    const auto = (res.autoColNames && res.autoColNames.length) ? ` · bỏ qua cột công thức: ${res.autoColNames.join(', ')}` : '';
     const grew = res.grewRows ? ` · đã nới thêm ${res.grewRows} dòng cho sheet` : '';
-    const where = tabTxt + ((nextStt != null) ? `STT ${nextStt} · dòng ${nextRow}` : `dòng ${nextRow}`) + why + grew;
+    const where = tabTxt + ((nextStt != null) ? `STT ${nextStt} · dòng ${nextRow}` : `dòng ${nextRow}`) + why + auto + grew;
     const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit` + (sheetGid != null ? `#gid=${sheetGid}` : '');
     saveModalStatus(
       `✓ Done · ${where}. <a href="${driveLink}" target="_blank" rel="noopener">Open in Drive</a> · ` +
@@ -13555,8 +13606,9 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
           batchStatus(`⏳ ${n + 1}/${PM_OUT.length} · Ghi hàng tiếp theo vào Sheet…`);
           const lg = await logToSheetSmart(o.script, driveLink, token, sheetId, sheetGid);
           if (n === 0 && lg.tab) {
-            batchStatus(`ℹ Ghi vào tab "${lg.tab}"${lg.autoTab ? ' (link không có #gid= → tab đầu tiên)' : ''}` +
-              (lg.lastHitCol ? ` · dòng cuối có chữ: ${lg.lastContentRow} (cột "${lg.lastHitCol}") → ghi từ dòng ${lg.nextRow}` : '') + '…');
+            batchStatus(`ℹ Ghi vào tab "${lg.tab}"${lg.autoTab ? ' (link không có #gid= → tab đầu tiên)' : ''} · bắt đầu từ dòng ${lg.nextRow}` +
+              (lg.strayBelow ? ` · ⚠ còn dữ liệu tận dòng ${lg.strayBelow} (cột "${lg.lastHitCol}") — đã bỏ qua` : '') +
+              ((lg.autoColNames && lg.autoColNames.length) ? ` · bỏ qua cột công thức: ${lg.autoColNames.join(', ')}` : '') + '…');
           }
           links.push({ name: o.name, driveLink, where: (lg.nextStt != null) ? `STT ${lg.nextStt} · dòng ${lg.nextRow}` : `dòng ${lg.nextRow}` });
         }
