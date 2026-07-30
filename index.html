@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_103 — Fixed the header title reverting to an old exam name: the hidden TOPIC RESEARCH box still held the previous topic and kept auto-filling Header Title and badge on every sync, so reopening the app for a different exam pulled the old brand back. Auto-fill now only runs while that panel is actually visible, and a loaded header title or badge is marked as user-typed so nothing overwrites it. Added optional per-topic profiles: open the app with ?ws=ged or ?ws=cdl and all locally stored settings are kept separate per profile. -->
+<!-- Manim Studio v38_18_3_104 — Voice generation now reads the script exactly as written. Numbers in brackets or a "step N:" written mid-sentence are no longer swallowed as sync markers, only line-leading ones are. Every chunk sent to TTS is capped at 25 words, splitting at commas or word count when a sentence runs long, and a script with no markers is chunked too instead of going out in one piece. Each chunk is length-checked against the measured reading pace and re-read if it comes back short, and a manually edited script in the editor is picked up before a week-tab voice run. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -4828,15 +4828,54 @@ async function callGeminiTTS(text, opts = {}) {
 // Split script into ordered segments at [N] markers.
 // Each segment: { step: N|null, text }. step=N means "this chunk of speech
 // corresponds to step N appearing on screen at the START of this segment".
-function splitScriptByMarkers(rawText) {
-  let normalized = rawText
+// Tách câu, và nếu một "câu" vẫn dài quá thì cắt tiếp ở dấu phẩy / chấm phẩy /
+// gạch ngang, cuối cùng cắt cứng theo số từ. Gemini TTS gặp chunk dài hay
+// "tóm tắt" lại thay vì đọc nguyên văn — đó là lúc nghe thấy sót từ.
+const TTS_MAX_WORDS = 25;
+function ttsSplitSentences(text) {
+  const rough = String(text).match(/[^.!?]+[.!?]+\s*|[^.!?]+$/g) || [String(text)];
+  const out = [];
+  rough.forEach(sent => {
+    const t = sent.trim();
+    if (!t) return;
+    if (countWords(t) <= TTS_MAX_WORDS) { out.push(t); return; }
+    // cắt theo mệnh đề, giữ nguyên dấu câu
+    const bits = t.split(/([,;:—–])/);
+    let buf = '';
+    for (let i = 0; i < bits.length; i++) {
+      const piece = (i % 2 === 1) ? bits[i] : bits[i];           // dấu hoặc chữ
+      const next = (buf + piece);
+      if (countWords(next) > TTS_MAX_WORDS && buf.trim()) {
+        out.push(buf.trim());
+        buf = (i % 2 === 1) ? piece : piece;
+      } else {
+        buf = next;
+      }
+    }
+    if (buf.trim()) {
+      const w = buf.trim().split(/\s+/).filter(Boolean);
+      if (w.length <= TTS_MAX_WORDS) out.push(buf.trim());
+      else for (let i = 0; i < w.length; i += TTS_MAX_WORDS) out.push(w.slice(i, i + TTS_MAX_WORDS).join(' '));
+    }
+  });
+  return out.length ? out : [String(text)];
+}
+
+function normalizeScriptMarkers(rawText) {
+  return String(rawText)
     .replace(/【\s*(\d+)\s*】/g, ' [$1] ')
     .replace(/「\s*(\d+)\s*」/g, ' [$1] ')
     .replace(/〔\s*(\d+)\s*〕/g, ' [$1] ')
-    .replace(/\(\s*(\d+)\s*\)/g, ' [$1] ')
     .replace(/\[\s*(\d+)\s*\]/g, ' [$1] ')
-    .replace(/\bstep\s+(\d+)\s*[:\-]/gi, ' [$1] ');
+    // "(2)" và "Step 2:" CHỈ được coi là marker khi đứng ĐẦU DÒNG.
+    // Trước đây bắt ở mọi vị trí nên "(2 pounds)" hay "step 2:" viết giữa câu
+    // bị biến thành marker và biến mất khỏi lời đọc → nghe như bị nuốt chữ.
+    .replace(/^[ \t]*\(\s*(\d+)\s*\)[ \t]*/gm, ' [$1] ')
+    .replace(/^[ \t]*step\s+(\d+)\s*[:\-][ \t]*/gim, ' [$1] ');
+}
 
+function splitScriptByMarkers(rawText) {
+  const normalized = normalizeScriptMarkers(rawText);
   const parts = normalized.split(/(\[\d+\])/).filter(s => s.trim());
   const segments = [];
   let pendingStep = null;
@@ -4884,7 +4923,7 @@ function splitScriptByMarkers(rawText) {
       return;
     }
     // Break by sentence boundary (., !, ?, ...) — keep terminator with sentence
-    const sentences = seg.text.match(/[^.!?]+[.!?]+\s*|[^.!?]+$/g) || [seg.text];
+    const sentences = ttsSplitSentences(seg.text);
     let buf = '';
     const flush = (isFirst) => {
       if (!buf.trim()) return;
@@ -4961,6 +5000,29 @@ function ttsPhaseStyle(seg, firstStepSeen) {
   return TTS_PHASE.teacher;
 }
 
+// Gemini TTS thỉnh thoảng "nuốt" một phần chunk (đọc lướt / tóm tắt). Không có
+// transcript để đối chiếu, nhưng thời lượng thì có: đoạn đọc đủ phải dài xấp xỉ
+// số từ ÷ tốc độ đọc đã đo. Ngắn bất thường → đọc lại, giữ bản dài nhất.
+async function ttsSegmentSafe(text, opts = {}) {
+  const words = countWords(text);
+  const wps = (calibratedWPS > 1 && calibratedWPS < 6) ? calibratedWPS : 2.45;
+  const expectSec = words / wps;
+  const MIN_RATIO = 0.62;          // dưới mức này gần như chắc chắn bị nuốt chữ
+  const MAX_TRIES = 3;
+  let best = null, bestSec = -1;
+  for (let t = 1; t <= MAX_TRIES; t++) {
+    const r = await callGeminiTTS(text, opts);
+    const sec = (r.pcmBytes.length / 2) / r.sampleRate;
+    if (sec > bestSec) { best = r; bestSec = sec; }
+    if (words < 5 || sec >= expectSec * MIN_RATIO) return best;
+    if (t < MAX_TRIES && opts.onShort) {
+      opts.onShort(t, MAX_TRIES, sec, expectSec);
+    }
+  }
+  console.warn(`[tts] đoạn nghi bị đọc thiếu sau ${MAX_TRIES} lần: "${text.slice(0, 60)}…" (${bestSec.toFixed(1)}s / dự kiến ${expectSec.toFixed(1)}s)`);
+  return best;
+}
+
 async function generateVoice() {
   if (!SVC_ACC) {
     showStatus('⚠ Nạp Service Account JSON trước (nút 🔑 NẠP SA JSON)', 'err');
@@ -4984,6 +5046,14 @@ async function generateVoice() {
 
     const segments = splitScriptByMarkers(rawText);
     const hasMarkers = segments.some(s => s.step !== null);
+
+    // Đối chiếu: mọi chữ trong ô kịch bản phải nằm trong các đoạn sắp đọc.
+    const wordsIn = countWords(normalizeScriptMarkers(rawText).replace(/\[\d+\]/g, ' '));
+    const wordsOut = segments.reduce((n, sg) => n + countWords(sg.text), 0);
+    if (wordsOut < wordsIn) {
+      console.warn('[tts] thiếu từ khi tách đoạn:', wordsOut, '/', wordsIn);
+      showStatus(`⚠ Tách đoạn bị hụt ${wordsIn - wordsOut} từ — kiểm tra lại ký hiệu trong kịch bản`, 'err');
+    }
 
     // ============================================================
     // ⭐ SEGMENTED TTS (precise sync, no estimation)
@@ -5017,10 +5087,13 @@ async function generateVoice() {
         // (Pacing is achieved via dynamic SILENCE GAPS between segments below,
         // not via TTS prompt instructions — chasing the latter caused Gemini to
         // sometimes read the instruction text aloud, throwing off sync.)
-        const { pcmBytes, sampleRate: sr } = await callGeminiTTS(seg.text, {
+        const { pcmBytes, sampleRate: sr } = await ttsSegmentSafe(seg.text, {
           styleOverride: ttsPhaseStyle(seg, firstStepSeen),
           onRetry: (attempt, max, wait, msg) => {
             showStatus(`⚠ Segment ${i + 1}/${segments.length}: ${msg} — retrying (${attempt}/${max - 1}) in ${(wait/1000).toFixed(0)}s...`, 'info');
+          },
+          onShort: (t, max, got, want) => {
+            showStatus(`⚠ Segment ${i + 1}/${segments.length} nghe bị hụt (${got.toFixed(1)}s / ~${want.toFixed(1)}s) — đọc lại (${t}/${max - 1})…`, 'info');
           }
         });
         sampleRate = sr;
@@ -5142,13 +5215,28 @@ async function generateVoice() {
       // ============================================================
       // Fallback: no markers in script → single-shot TTS (old behavior)
       // ============================================================
-      showStatus(`⏳ Calling Gemini TTS (voice: ${currentVoice})...`, 'info');
+      // Gửi cả bài trong một lần khiến Gemini TTS hay đọc lướt / bỏ đoạn.
+      // Vẫn cắt thành chunk ngắn rồi nối lại — chỉ khác là không có marker
+      // nên không cần mốc thời gian nào.
       const cleanText = rawText.replace(/\[\d+\]/g, '').replace(/\s+/g, ' ').trim();
-      const { pcmBytes, sampleRate } = await callGeminiTTS(cleanText, {
-        onRetry: (attempt, max, wait, msg) => {
-          showStatus(`⚠ ${msg} — retrying (${attempt}/${max - 1}) in ${(wait/1000).toFixed(0)}s...`, 'info');
-        }
-      });
+      const chunks = ttsSplitSentences(cleanText);
+      const pcmParts = [];
+      let sampleRate = 24000;
+      for (let ci = 0; ci < chunks.length; ci++) {
+        showStatus(`⏳ Gemini TTS ${ci + 1}/${chunks.length} (voice: ${currentVoice})...`, 'info');
+        const r = await ttsSegmentSafe(chunks[ci], {
+          onRetry: (attempt, max, wait, msg) => {
+            showStatus(`⚠ Đoạn ${ci + 1}/${chunks.length}: ${msg} — retrying (${attempt}/${max - 1}) in ${(wait/1000).toFixed(0)}s...`, 'info');
+          },
+          onShort: (t, max, got, want) => {
+            showStatus(`⚠ Đoạn ${ci + 1}/${chunks.length} nghe bị hụt (${got.toFixed(1)}s / ~${want.toFixed(1)}s) — đọc lại (${t}/${max - 1})…`, 'info');
+          }
+        });
+        sampleRate = r.sampleRate;
+        pcmParts.push(r.pcmBytes);
+        if (ci < chunks.length - 1) pcmParts.push(silencePcm(0.14, sampleRate));
+      }
+      const pcmBytes = concatPcm(pcmParts);
       const wavBlob = pcmToWav(pcmBytes, sampleRate, 1);
       audioBlob = wavBlob;
       const arrBuf = await wavBlob.arrayBuffer();
@@ -5172,7 +5260,7 @@ async function generateVoice() {
       document.getElementById('audioTime').textContent = `0:00 / ${fmtTime(audioDuration)}`;
       document.getElementById('mainTime').textContent = `0.0s / ${audioDuration.toFixed(1)}s`;
 
-      showStatus(`✓ Voice generated (${audioDuration.toFixed(1)}s) · no markers — add [1][2][3] for exact sync`, 'ok');
+      showStatus(`✓ Đã đọc ${chunks.length} đoạn · ${countWords(cleanText)} từ · ${audioDuration.toFixed(1)}s — chưa có marker [1][2][3] nên step chưa khớp chính xác`, 'ok');
     }
   } catch (e) {
     console.error(e);
@@ -13413,6 +13501,16 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
 
   async function doVoice(i, onStatus) {
     const c = PM.cards[i];
+    // Nếu card này đang mở trong editor và người dùng vừa sửa tay ô kịch bản
+    // (EDIT FREELY) thì lấy bản vừa sửa, đừng đọc bản cũ lưu trong card.
+    const stxNow = $('scriptText');
+    if (PM.active === i && stxNow && stxNow.value.trim() &&
+        stxNow.value.trim() !== String(c.script || '').trim()) {
+      c.script = stxNow.value.trim();
+      if (typeof pmSaveDebounced === 'function') pmSaveDebounced();
+      const sc = document.querySelectorAll('#pmCards .pm-script')[i];
+      if (sc) sc.value = c.script;
+    }
     if (!c.script) throw new Error('chưa có kịch bản — gen kịch bản trước');
     await loadCardIntoEditor(i, { skipAudio: true, quiet: true });
     $('scriptText').value = c.script;
