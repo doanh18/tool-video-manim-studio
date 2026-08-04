@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_104 — Voice generation now reads the script exactly as written. Numbers in brackets or a "step N:" written mid-sentence are no longer swallowed as sync markers, only line-leading ones are. Every chunk sent to TTS is capped at 25 words, splitting at commas or word count when a sentence runs long, and a script with no markers is chunked too instead of going out in one piece. Each chunk is length-checked against the measured reading pace and re-read if it comes back short, and a manually edited script in the editor is picked up before a week-tab voice run. -->
+<!-- Manim Studio v38_18_3_106 — Week tab: badge colours are now shared across all 7 videos. Changing BG or TEXT on any card applies to every card, updates the other pickers live, saves into the week settings so videos added later inherit it, and carries through to preview, zoom and export. Badge label text stays per-video, and the 1-VIDEO tab keeps its own separate colours. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1833,12 +1833,16 @@
               <select id="wkBgPattern" class="input" style="min-width:90px;cursor:pointer" title="Kiểu hoa văn"></select>
             </div>
 
-            <label class="pm-lbl" style="margin-top:12px">📝 Text overlay · dùng chung cho cả 7 video</label>
+            <label class="pm-lbl" style="margin-top:12px">📝 Text &amp; ảnh overlay · dùng chung cho cả 7 video</label>
             <div id="wkOvList"></div>
-            <button type="button" class="pm-mini" id="wkOvAdd">+ Thêm text overlay</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="pm-mini" id="wkOvAdd">+ Thêm text overlay</button>
+              <button type="button" class="pm-mini" id="wkOvImgAdd">+ Thêm ảnh overlay</button>
+              <input type="file" id="wkOvImgInput" accept="image/*" style="display:none">
+            </div>
             <div class="pm-hint" style="margin:6px 0 0">
-              Text này vẽ đè lên MỌI video — hiện ở preview, ở khung phóng to và có luôn trong file MP4 xuất ra.
-              Đổi vị trí bằng ô X/Y (% khung) hoặc <b>kéo thẳng chữ trên khung phóng to</b>. Cỡ chữ tính theo % chiều cao khung.
+              Text và ảnh vẽ đè lên MỌI video — hiện ở preview, ở khung phóng to và có luôn trong file MP4 xuất ra.
+              Đổi vị trí bằng ô X/Y (% khung) hoặc <b>kéo thẳng trên khung phóng to</b>; kéo góc dưới-phải để phóng to / thu nhỏ, nút ✕ để xoá.
             </div>
 
             <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:10px">
@@ -7299,6 +7303,20 @@ function drawTextOverlays(ctx, W, H) {
   if (!Array.isArray(list) || !list.length) return;
   ctx.save();
   for (const o of list) {
+    // ---- overlay ẢNH ----
+    if (o.kind === 'img') {
+      const im = o.img;
+      if (!im || !im.naturalWidth) continue;
+      const w = Math.max(0.01, (o.wPct == null ? 30 : o.wPct)) / 100 * W;
+      const h = w * (im.naturalHeight / im.naturalWidth);
+      const cx = (o.x == null ? 50 : o.x) / 100 * W;
+      const cy = (o.y == null ? 50 : o.y) / 100 * H;
+      ctx.save();
+      ctx.globalAlpha = (o.alpha == null ? 1 : o.alpha);
+      try { ctx.drawImage(im, cx - w / 2, cy - h / 2, w, h); } catch (e) {}
+      ctx.restore();
+      continue;
+    }
     const txt = String(o.text || '').trim();
     if (!txt) continue;
     const px = Math.max(6, (o.size == null ? 60 : o.size)) * (H / 1920);
@@ -12286,8 +12304,9 @@ async function applyEditsAndReRender() {
     return {
       q: '', opts: ['', '', '', ''], correct: [], sel: true,
       badgeText: val('badgeText', 'MATH 😎'),
-      badgeBg: val('badgeBgColor', '#8B6F3F'),
-      badgeFg: val('badgeTextColor', '#FFF8DC'),
+      // màu badge lấy theo cài đặt chung của tuần → video thêm sau ăn theo luôn
+      badgeBg: WKE.badgeBg || val('badgeBgColor', '#8B6F3F'),
+      badgeFg: WKE.badgeFg || val('badgeTextColor', '#FFF8DC'),
       qImg: null, qImgUrl: null, qImgName: '',
       stepColor: defStepColor(),
       showSteps: showEl ? showEl.checked !== false : true,
@@ -12418,6 +12437,28 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     }
     ci = ci.filter(n => typeof n === 'number' && n >= 0 && n < opts.length);
     if (!ci.length) ci = [0];
+
+    // Gemini gần như luôn đặt đáp án đúng ở vị trí đầu khi nó TỰ sinh lựa chọn
+    // → video nào cũng đáp án A. Xáo lại thứ tự, giữ nguyên chữ, chỉ dời chỗ.
+    // (Nếu câu hỏi gốc đã kèm sẵn A) B) C) D) thì giữ nguyên trật tự của đề.)
+    const inputHasChoices = /(^|\n)\s*[A-Ha-h]\s*[\).\-:]\s*\S/.test(String(rawQ));
+    if (!inputHasChoices && opts.length > 2) {
+      const idx = opts.map((_, i) => i);
+      for (let i = idx.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [idx[i], idx[j]] = [idx[j], idx[i]];
+      }
+      // "none of the above / tất cả đáp án trên" phải nằm cuối, không xáo lên trên
+      const tailRe = /\b(none|all)\s+of\s+the\s+above\b|\bkhông\s+(có\s+)?đáp\s+án\b|\btất\s+cả\s+(các\s+)?đáp\s+án\b/i;
+      const tail = idx.filter(i => tailRe.test(opts[i]));
+      if (tail.length) {
+        const rest = idx.filter(i => !tailRe.test(opts[i]));
+        idx.length = 0; idx.push(...rest, ...tail);
+      }
+      const newOpts = idx.map(i => opts[i]);
+      const newCi = ci.map(old => idx.indexOf(old)).filter(n => n >= 0).sort((a, b) => a - b);
+      if (newCi.length === ci.length) { opts = newOpts; ci = newCi; }
+    }
     return { question: String(r.question || rawQ).trim(), opts, correct: ci, why: r.why || '' };
   }
 
@@ -12468,6 +12509,7 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     logoImg: null, logoRemoved: false, logoName: '',
     logo2Img: null, logo2Name: '', logo2Pct: 28,
     subText: 'Learn Smart, Pass Easy.', subSize: 34, subColor: '#111111',
+    badgeBg: '#8B6F3F', badgeFg: '#FFF8DC',   // màu badge DÙNG CHUNG cả 7 video
     bgMediaEl: null, bgMediaType: null, bgMediaUrl: null, bgMediaName: '',
     overlays: []
   };
@@ -12479,7 +12521,13 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
         bgLineColor: WKE.bgLineColor, bgPattern: WKE.bgPattern,
         qTextColor: WKE.qTextColor, logoPct: WKE.logoPct, logoRemoved: WKE.logoRemoved,
         logo2Pct: WKE.logo2Pct, subText: WKE.subText, subSize: WKE.subSize, subColor: WKE.subColor,
-        overlays: WKE.overlays
+        badgeBg: WKE.badgeBg, badgeFg: WKE.badgeFg,
+        // Object Image không JSON được → lưu dataURL (src) rồi dựng lại lúc load.
+        overlays: (WKE.overlays || []).map(o => {
+          if (o.kind !== 'img') return o;
+          const { img, ...rest } = o;
+          return rest;
+        })
       }));
     } catch (e) {}
   }
@@ -12496,16 +12544,30 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     WKE.subText = 'Learn Smart, Pass Easy.';
     WKE.subSize = parseFloat(val('logoSubSize', 34)) || 34;
     WKE.subColor = val('logoSubColor', '#111111');
+    WKE.badgeBg = val('badgeBgColor', '#8B6F3F');
+    WKE.badgeFg = val('badgeTextColor', '#FFF8DC');
     try {
       const o = JSON.parse(localStorage.getItem(ENV_KEY) || 'null');
       if (o) {
         ['brandTop', 'bgPreset', 'bgColor', 'bgLineColor', 'bgPattern', 'qTextColor', 'logoPct',
-         'logo2Pct', 'subSize', 'subColor'].forEach(k => {
+         'logo2Pct', 'subSize', 'subColor', 'badgeBg', 'badgeFg'].forEach(k => {
           if (o[k] != null) WKE[k] = o[k];
         });
         WKE.logoRemoved = !!o.logoRemoved;
         if (typeof o.subText === 'string') WKE.subText = o.subText;   // '' = đã xoá text
         WKE.overlays = Array.isArray(o.overlays) ? o.overlays : [];
+        // dựng lại ảnh overlay từ dataURL đã lưu
+        WKE.overlays.forEach(ov => {
+          if (ov.kind === 'img' && ov.src) {
+            const im = new Image();
+            im.onload = () => {
+              ov.img = im;
+              if (typeof ovRender === 'function') ovRender();
+              if (typeof schedulePreview === 'function') schedulePreview();
+            };
+            im.src = ov.src;
+          }
+        });
       }
     } catch (e) {}
   }
@@ -13035,19 +13097,22 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       imgBox.append(imgBtns, imgStat, fileIn);
 
       const badgeBox = document.createElement('div');
-      badgeBox.appendChild(labelEl('Header Badge · text & colors (riêng video này)'));
+      badgeBox.appendChild(labelEl('Header Badge · text riêng video này · MÀU dùng chung cả 7'));
       const bRow = document.createElement('div');
       bRow.className = 'pm-badge-row';
       const bTxt = document.createElement('input');
       bTxt.className = 'input'; bTxt.value = c.badgeText || ''; bTxt.placeholder = 'badge label';
       bTxt.style.cssText = 'flex:1;min-width:90px';
       bTxt.addEventListener('input', () => { c.badgeText = bTxt.value; schedulePreview(); pmSaveDebounced(); });
+      // Màu badge dùng chung: đổi ở 1 video → cả 7 video ăn theo.
       const bBg = document.createElement('input');
-      bBg.type = 'color'; bBg.value = c.badgeBg || '#8B6F3F'; bBg.title = 'Màu nền badge';
-      bBg.addEventListener('input', () => { c.badgeBg = bBg.value; schedulePreview(); pmSaveDebounced(); });
+      bBg.type = 'color'; bBg.value = c.badgeBg || WKE.badgeBg || '#8B6F3F';
+      bBg.title = 'Màu nền badge — đổi ở đây thì CẢ 7 VIDEO đổi theo';
+      bBg.addEventListener('input', () => { setBadgeColorAll('badgeBg', bBg.value); });
       const bFg = document.createElement('input');
-      bFg.type = 'color'; bFg.value = c.badgeFg || '#FFF8DC'; bFg.title = 'Màu chữ badge';
-      bFg.addEventListener('input', () => { c.badgeFg = bFg.value; schedulePreview(); pmSaveDebounced(); });
+      bFg.type = 'color'; bFg.value = c.badgeFg || WKE.badgeFg || '#FFF8DC';
+      bFg.title = 'Màu chữ badge — đổi ở đây thì CẢ 7 VIDEO đổi theo';
+      bFg.addEventListener('input', () => { setBadgeColorAll('badgeFg', bFg.value); });
       const mk = (txt) => { const s = document.createElement('span'); s.style.cssText = "font-size:9.5px;color:#5a6070;font-family:'JetBrains Mono',monospace"; s.textContent = txt; return s; };
       bRow.append(bTxt, mk('BG'), bBg, mk('TEXT'), bFg);
       badgeBox.appendChild(bRow);
@@ -13105,6 +13170,30 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     'stepColor', 'showSteps', 'brandTop', 'bgColor', 'bgLineColor', 'bgPattern', 'qTextColor',
     'logoWidthPct', 'showLogo', 'bgMediaEl', 'bgMediaType', 'overlays'];
   function snapRS() { const o = {}; RS_KEYS.forEach(k => o[k] = RS[k]); return o; }
+  // Đổi màu badge ở BẤT KỲ video nào → áp cho cả 7 video + lưu vào cài đặt tuần,
+  // nên video thêm sau cũng ăn theo.
+  function setBadgeColorAll(key, value) {
+    WKE[key] = value;
+    PM.cards.forEach(c => { c[key] = value; });
+    envSave(); pmSaveDebounced();
+    // đồng bộ mọi ô chọn màu đang hiển thị (không vẽ lại cả danh sách card
+    // để không mất con trỏ / trạng thái gấp-mở của người dùng)
+    const host = $('pmCards');
+    if (host) {
+      const sel = key === 'badgeBg' ? 1 : 2;
+      host.querySelectorAll('.pm-badge-row').forEach(row => {
+        const inputs = row.querySelectorAll('input[type="color"]');
+        const el = inputs[sel - 1];
+        if (el && el.value !== value) el.value = value;
+      });
+    }
+    // ô màu trong editor 1 VIDEO thì KHÔNG đụng — 2 tab vẫn tách nhau
+    schedulePreview();
+    if (PM.zoomIdx >= 0 && $('weekZoom') && $('weekZoom').classList.contains('show') && !WK.playing) {
+      wkStatic(PM.zoomIdx, $('weekZoomCanvas'), PHONE_W, PHONE_H);
+    }
+  }
+
   function applyCardToRS(c) {
     RS.qText = (c.q || '').trim() || '(chưa nhập câu hỏi)';
     const opts = (c.opts || []).map((t, j) => ({
@@ -13116,8 +13205,9 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     RS.stepColor = c.stepColor || defStepColor();
     RS.showSteps = c.showSteps !== false;
     RS.brandBadge = c.badgeText || '';
-    RS.badgeBg = c.badgeBg || '#8B6F3F';
-    RS.badgeFg = c.badgeFg || '#FFF8DC';
+    // màu badge dùng chung cho cả tuần (text badge vẫn riêng từng video)
+    RS.badgeBg = WKE.badgeBg || c.badgeBg || '#8B6F3F';
+    RS.badgeFg = WKE.badgeFg || c.badgeFg || '#FFF8DC';
     RS.qImageEl = c.qImg || null;
     applyEnv();                 // cài đặt chung của tuần — tách hẳn khỏi editor 1 VIDEO
   }
@@ -13409,8 +13499,8 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     if (c.steps && c.steps.length && typeof rebuildSteps === 'function') rebuildSteps(c.steps);
     const bt = $('badgeText'), bb = $('badgeBgColor'), bf = $('badgeTextColor');
     if (bt) { bt.value = c.badgeText || ''; bt.dataset.userEdited = '1'; }
-    if (bb) bb.value = c.badgeBg || '#8B6F3F';
-    if (bf) bf.value = c.badgeFg || '#FFF8DC';
+    if (bb) bb.value = WKE.badgeBg || c.badgeBg || '#8B6F3F';
+    if (bf) bf.value = WKE.badgeFg || c.badgeFg || '#FFF8DC';
     const sc = $('stepColor'); if (sc) sc.value = c.stepColor || defStepColor();
     const ss = $('showStepsToggle'); if (ss) ss.checked = c.showSteps !== false;
     // voice riêng của video này
@@ -13830,7 +13920,16 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
   // TEXT OVERLAY DÙNG CHUNG — thuộc về tab 1 TUẦN (WKE.overlays)
   // ============================================================
   function ovList() { if (!Array.isArray(WKE.overlays)) WKE.overlays = []; return WKE.overlays; }
-  function ovSave() { envSave(); }
+  function ovSave() {
+    envSave();
+    // localStorage có hạn ~5MB: ảnh to sẽ không lưu được src (vẫn dùng bình
+    // thường trong phiên này, chỉ mất sau khi reload).
+    const big = ovList().find(o => o.kind === 'img' && o.img && !o.src);
+    if (big && !ovSave._warned) {
+      ovSave._warned = true;
+      console.warn('[overlay] ảnh quá lớn để lưu qua reload — vẫn dùng được trong phiên này.');
+    }
+  }
   function ovRepaint() {
     schedulePreview();
     if (PM.zoomIdx >= 0 && $('weekZoom').classList.contains('show') && !WK.playing) {
@@ -13840,6 +13939,7 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
   }
 
   function ovRow(o, i) {
+    if (o.kind === 'img') return ovImgRow(o, i);
     const box = document.createElement('div');
     box.className = 'ov-card';
 
@@ -13924,6 +14024,105 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     return box;
   }
 
+  // ---- card điều khiển cho overlay ẢNH ----
+  function ovImgRow(o, i) {
+    const box = document.createElement('div');
+    box.className = 'ov-card';
+
+    const head = document.createElement('div');
+    head.className = 'ov-head';
+    const ttl = document.createElement('span');
+    ttl.className = 'ov-title';
+    ttl.textContent = '🖼 ẢNH ' + (i + 1) + (o.name ? ' · ' + String(o.name).slice(0, 18) : '');
+    const rm = document.createElement('button');
+    rm.type = 'button'; rm.className = 'rm'; rm.textContent = '✕'; rm.title = 'Xoá ảnh này';
+    rm.addEventListener('click', () => {
+      ovList().splice(i, 1);
+      if (ovSel === i) ovSel = -1; else if (ovSel > i) ovSel--;
+      ovSave(); ovRender(); ovRepaint();
+    });
+    head.append(ttl, rm);
+    box.appendChild(head);
+
+    const line = (label, node, valNode) => {
+      const r = document.createElement('div');
+      r.className = 'ov-line';
+      const l = document.createElement('span');
+      l.className = 'ov-lbl'; l.textContent = label;
+      r.append(l, node);
+      if (valNode) r.appendChild(valNode);
+      box.appendChild(r);
+    };
+
+    const slider = (key, min, max, step, dflt, unit, fmt) => {
+      const rng = document.createElement('input');
+      rng.type = 'range'; rng.className = 'ov-range';
+      rng.min = min; rng.max = max; rng.step = step;
+      rng.value = (o[key] == null ? dflt : o[key]);
+      const out = document.createElement('span');
+      out.className = 'ov-val';
+      const paint = () => { out.textContent = (fmt ? fmt(rng.value) : Math.round(rng.value * 10) / 10) + unit; };
+      paint();
+      rng.addEventListener('input', () => { o[key] = parseFloat(rng.value); paint(); ovSave(); ovRepaint(); });
+      box._ranges = box._ranges || {};
+      box._ranges[key] = { rng, paint };
+      return [rng, out];
+    };
+
+    let [r1, v1] = slider('x', 0, 100, 0.5, 50, '%'); line('X pos', r1, v1);
+    let [r2, v2] = slider('y', 0, 100, 0.5, 50, '%'); line('Y pos', r2, v2);
+    let [r3, v3] = slider('wPct', 3, 100, 0.5, 30, '%'); line('Cỡ ảnh', r3, v3);
+    let [r4, v4] = slider('alpha', 0.05, 1, 0.01, 1, '%', v => Math.round(v * 100)); line('Độ mờ', r4, v4);
+
+    const rep = document.createElement('button');
+    rep.type = 'button'; rep.className = 'pm-mini';
+    rep.textContent = 'Thay ảnh khác';
+    rep.addEventListener('click', () => ovPickImage(o));
+    line('Ảnh', rep);
+
+    if (!o.img || !o.img.naturalWidth) {
+      const warn = document.createElement('div');
+      warn.className = 'pm-hint';
+      warn.style.cssText = 'margin:6px 0 0;color:#f59e0b';
+      warn.textContent = '⚠ Ảnh chưa nạp lại sau khi reload — bấm "Thay ảnh khác" để chọn lại.';
+      box.appendChild(warn);
+    }
+    return box;
+  }
+
+  // Nạp 1 file ảnh vào overlay (o = overlay có sẵn, hoặc null = tạo mới)
+  function ovPickImage(o) {
+    const inp = $('wkOvImgInput');
+    if (!inp) return;
+    inp.value = '';
+    inp.onchange = (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const fr = new FileReader();
+      fr.onload = () => {
+        const src = String(fr.result);
+        const im = new Image();
+        im.onload = () => {
+          if (o) { o.img = im; o.name = f.name; o.src = (src.length < 700000 ? src : ''); }
+          else {
+            if (ovList().length >= 8) { alert('Tối đa 8 overlay (text + ảnh)'); return; }
+            ovList().push({
+              kind: 'img', img: im, name: f.name,
+              src: (src.length < 700000 ? src : ''),
+              x: 50, y: 50, wPct: 30, alpha: 1
+            });
+          }
+          ovSave(); ovRender(); ovRepaint();
+        };
+        im.onerror = () => alert('Không đọc được ảnh này');
+        im.src = src;
+      };
+      fr.onerror = () => alert('Không đọc được file');
+      fr.readAsDataURL(f);
+    };
+    inp.click();
+  }
+
   function ovRender() {
     const host = $('wkOvList');
     if (!host) return;
@@ -13942,13 +14141,18 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
         const r = box._ranges[k];
         if (r) { r.rng.value = (o[k] == null ? 50 : o[k]); r.paint(); }
       });
+      const rs = box._ranges[o.kind === 'img' ? 'wPct' : 'size'];
+      if (rs) { rs.rng.value = (o.kind === 'img' ? (o.wPct == null ? 30 : o.wPct) : (o.size == null ? 60 : o.size)); rs.paint(); }
     });
   }
 
   {
+    const addImg = $('wkOvImgAdd');
+    if (addImg) addImg.addEventListener('click', () => ovPickImage(null));
+
     const add = $('wkOvAdd');
     if (add) add.addEventListener('click', () => {
-      if (ovList().length >= 6) { alert('Tối đa 6 text overlay'); return; }
+      if (ovList().filter(o => o.kind !== 'img').length >= 6) { alert('Tối đa 6 text overlay'); return; }
       ovList().push({ text: 'New text', x: 50, y: 50, size: 60, color: '#111111',
                       bg: '#F5E96B', bgAlpha: 0, align: 'center' });
       ovSave(); ovRender(); ovRepaint();
@@ -13962,6 +14166,14 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     return _ovMeasure;
   }
   function ovBox(o, W, H) {
+    if (o.kind === 'img') {
+      const im = o.img;
+      const w = Math.max(0.01, (o.wPct == null ? 30 : o.wPct)) / 100 * W;
+      const h = (im && im.naturalWidth) ? w * (im.naturalHeight / im.naturalWidth) : w;
+      const cx = (o.x == null ? 50 : o.x) / 100 * W;
+      const cy = (o.y == null ? 50 : o.y) / 100 * H;
+      return { x: cx - w / 2, y: cy - h / 2, w, h };
+    }
     const px = Math.max(6, (o.size == null ? 60 : o.size)) * (H / 1920);
     const c = ovMeasureCtx();
     c.font = `800 ${px}px "Inter Tight", "Poppins", sans-serif`;
@@ -14021,14 +14233,16 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       e.preventDefault(); e.stopPropagation();
       const oo = ovList()[ovSel];
       if (!oo) return;
-      const startSize = (oo.size == null ? 60 : oo.size);
+      const isImg = oo.kind === 'img';
+      const startSize = isImg ? (oo.wPct == null ? 30 : oo.wPct) : (oo.size == null ? 60 : oo.size);
       const rect0 = cv.getBoundingClientRect();
       const cX = rect0.left + (b.x + b.w / 2) * sx;
       const cY = rect0.top + (b.y + b.h / 2) * sy;
       const d0 = Math.max(12, Math.hypot(e.clientX - cX, e.clientY - cY));
       const move = (ev) => {
         const d = Math.max(6, Math.hypot(ev.clientX - cX, ev.clientY - cY));
-        oo.size = Math.max(12, Math.min(260, Math.round(startSize * d / d0)));
+        if (isImg) oo.wPct = Math.max(3, Math.min(100, Math.round(startSize * d / d0 * 10) / 10));
+        else oo.size = Math.max(12, Math.min(260, Math.round(startSize * d / d0)));
         if (!WK.playing && PM.zoomIdx >= 0) wkStatic(PM.zoomIdx, cv, PHONE_W, PHONE_H);
         ovLayerSync(); ovSyncNums();
       };
@@ -14058,7 +14272,8 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       const list = ovList();
       let best = -1, bestA = Infinity;
       list.forEach((o, i) => {
-        if (!String(o.text || '').trim()) return;
+        if (o.kind === 'img') { if (!o.img || !o.img.naturalWidth) return; }
+        else if (!String(o.text || '').trim()) return;
         const b = ovBox(o, W, H);
         const x0 = b.x / W * 100, x1 = (b.x + b.w) / W * 100;
         const y0 = b.y / H * 100, y1 = (b.y + b.h) / H * 100;
