@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_113 — Flash Card: khung xuất nhập thẳng kích thước vùng ảnh (mặc định 855x1520 nằm giữa khung 1080x1920) thay cho nhập padding; thêm chế độ mặc định "Lấp đầy đúng khung" — ảnh phủ trọn 855x1520, không cắt xén gì. Vẫn giữ 2 chế độ giữ tỉ lệ. Không đụng tab 9:16 / 16:9 / Cheatsheet. -->
+<!-- Manim Studio v38_18_3_114 — Flash Card FIX: ảnh gen ra bị chép nguyên chữ của ảnh mẫu. Prompt nay nêu rõ đâu là chữ duy nhất được vẽ lên ảnh, kèm khối lệnh cấm sao chép chữ/nội dung của ảnh mẫu (endpoint edits vốn hay chỉ sửa nhẹ ảnh gửi vào). Thêm ô chọn mức bám ảnh mẫu: chỉ lấy phong cách / bám bố cục / không gửi ảnh mẫu. Không đụng tab 9:16 / 16:9 / Cheatsheet. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1778,6 +1778,18 @@
           <div>
             <label class="fc-lbl">Prompt ảnh MÔ TẢ (giữ [DESC] · [NICHE])</label>
             <textarea id="fcPromptDesc" class="fc-in" rows="5" style="resize:vertical"></textarea>
+          </div>
+
+          <div>
+            <label class="fc-lbl">Ảnh mẫu bám tới mức nào</label>
+            <select id="fcRefMode" class="fc-in">
+              <option value="style">Chỉ lấy phong cách — thay 100% chữ (khuyên dùng)</option>
+              <option value="close">Bám sát bố cục ảnh mẫu — vẫn thay chữ</option>
+              <option value="off">Không gửi ảnh mẫu — tả phong cách bằng chữ</option>
+            </select>
+            <div style="font-size:10px;color:#6b7280;font-family:'JetBrains Mono',monospace;margin-top:5px;line-height:1.5">
+              Nếu ảnh gen ra bị chép lại chữ của ảnh mẫu, hạ xuống mức “Không gửi ảnh mẫu”.
+            </div>
           </div>
 
           <div>
@@ -15249,8 +15261,9 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     items:  'manim_fc_items_v1',
     pText:  'manim_fc_prompt_text_v2',
     count:  'manim_fc_count_v1',
-    pTitle: 'manim_fc_prompt_title_v1',
-    pDesc:  'manim_fc_prompt_desc_v1',
+    pTitle: 'manim_fc_prompt_title_v2',
+    pDesc:  'manim_fc_prompt_desc_v2',
+    refMode:'manim_fc_ref_mode_v1',
     engine: 'manim_fc_engine_v1',
     delay:  'manim_fc_delay_v1',
     refT:   'manim_fc_ref_title_v1',
@@ -15300,10 +15313,32 @@ Số mục hoàn toàn do bạn quyết dựa trên nội dung — không mặc 
   const COUNT_RULE_FIXED = (n) => `Nhiệm vụ: tạo ĐÚNG ${n} mục cho bộ flash card này (người dùng đã chỉ định cụ thể).`;
 
   const DEF_PROMPT_TITLE =
-`[TITLE] + tạo cho tôi ảnh với tiêu đề hook trên , VD như ảnh trên , 100% ngôn ngữ bằng tiếng anh , hình ảnh khác liên quan tới [NICHE] chứ không phải là nền mẫu hiện tại ( BẮt buộc phải khác ) , nền trắng . Layout 9:16 , không liệt kê , tiêu đề nên typography , cho từ quan trọng được nổi bật`;
+`TIÊU ĐỀ DUY NHẤT ĐƯỢC PHÉP XUẤT HIỆN TRÊN ẢNH (dịch sang tiếng Anh tự nhiên): "[TITLE]"
+
+[TITLE] + tạo cho tôi ảnh với tiêu đề hook trên , VD như ảnh trên , 100% ngôn ngữ bằng tiếng anh , hình ảnh khác liên quan tới [NICHE] chứ không phải là nền mẫu hiện tại ( BẮt buộc phải khác ) , nền trắng . Layout 9:16 , không liệt kê , tiêu đề nên typography , cho từ quan trọng được nổi bật`;
 
   const DEF_PROMPT_DESC =
-`tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ bằng tiếng anh , nền trắng . Layout 9:16 [NICHE] + [DESC] lưu ý : nếu từ ngữ nào vi phạm chính sách thì có thể thay thế bằng từ ngữ khác tương đương không bị vi phạm`;
+`NỘI DUNG DUY NHẤT ĐƯỢC PHÉP XUẤT HIỆN TRÊN ẢNH (dịch sang tiếng Anh tự nhiên): "[DESC]"
+
+tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ bằng tiếng anh , nền trắng . Layout 9:16 [NICHE] + [DESC] lưu ý : nếu từ ngữ nào vi phạm chính sách thì có thể thay thế bằng từ ngữ khác tương đương không bị vi phạm`;
+
+  // Chặn model chép nguyên nội dung ảnh mẫu (endpoint edits vốn có xu hướng "sửa nhẹ" ảnh gửi vào)
+  function refGuard(mode, niche, what) {
+    const n = niche || 'the topic';
+    if (mode === 'close') {
+      return '\n\n=== THE ATTACHED IMAGE IS A LAYOUT REFERENCE ===\n' +
+        '- Keep its layout and visual treatment, but this is NOT an image to edit — build a new poster.\n' +
+        '- Replace 100% of the text. Do NOT keep any word, number or letter from the attached image.\n' +
+        '- The only text allowed is ' + what + ' given above, in natural English.\n' +
+        '- Use different subject imagery, related to: ' + n + '.';
+    }
+    return '\n\n=== CRITICAL — THE ATTACHED IMAGE IS A STYLE REFERENCE ONLY ===\n' +
+      '- This is NOT an image to edit. Create a COMPLETELY NEW poster from scratch.\n' +
+      '- Do NOT copy, keep, translate or paraphrase ANY word, number or letter from the attached image. Replace 100% of its text.\n' +
+      '- The ONLY text allowed in the output is ' + what + ' given above, written in natural English.\n' +
+      '- Do NOT reuse its subject matter, objects or scene. Use different imagery, related to: ' + n + '.\n' +
+      '- Borrow ONLY the visual treatment: typography weight and stacking, colour accents, brush-stroke bar, white background, vertical 9:16 composition.';
+  }
 
   // Mô tả style bằng chữ — chỉ dùng khi engine không nhận được ảnh mẫu (fallback)
   const STYLE_TXT_TITLE =
@@ -15340,6 +15375,7 @@ Số mục hoàn toàn do bạn quyết dựa trên nội dung — không mặc 
   const keyStatEl = $('fcKeyStatus');
   const refTImg   = $('fcRefTitleImg');
   const refDImg   = $('fcRefDescImg');
+  const refModeEl = $('fcRefMode');
   const lightbox  = $('fcLightbox');
   const lightImg  = $('fcLightboxImg');
   const boxWEl    = $('fcBoxW');
@@ -15373,6 +15409,7 @@ Số mục hoàn toàn do bạn quyết dựa trên nội dung — không mặc 
   pDescEl.value  = lsGet(K.pDesc, '')  || DEF_PROMPT_DESC;
   refTImg.src = lsGet(K.refT, '') || REF_TITLE_DEFAULT;
   refDImg.src = lsGet(K.refD, '') || REF_DESC_DEFAULT;
+  if (refModeEl) { refModeEl.value = lsGet(K.refMode, 'style'); refModeEl.addEventListener('change', () => lsSet(K.refMode, refModeEl.value)); }
   boxWEl.value = lsGet(K.boxW, '855');
   boxHEl.value = lsGet(K.boxH, '1520');
   bgEl.value   = lsGet(K.bg, '#ffffff');
@@ -15400,6 +15437,7 @@ Số mục hoàn toàn do bạn quyết dựa trên nội dung — không mặc 
     if (countEl2) { countEl2.value = 'auto'; lsSet(K.count, 'auto'); refreshCountHint(); }
     pTitleEl.value = DEF_PROMPT_TITLE; lsSet(K.pTitle, DEF_PROMPT_TITLE);
     pDescEl.value = DEF_PROMPT_DESC;  lsSet(K.pDesc, DEF_PROMPT_DESC);
+    if (refModeEl) { refModeEl.value = 'style'; lsSet(K.refMode, 'style'); }
     setStatus('✓ Đã khôi phục 3 prompt mặc định.', 'ok');
   });
 
@@ -16058,14 +16096,22 @@ Số mục hoàn toàn do bạn quyết dựa trên nội dung — không mặc 
 
   lightbox.addEventListener('click', () => { lightbox.style.display = 'none'; lightImg.src = ''; });
 
+  const refMode = () => (refModeEl && refModeEl.value) || 'style';
+  // mức 'off' → không đính ảnh mẫu, thay bằng mô tả phong cách dạng chữ
+  const refFor = (url) => refMode() === 'off' ? null : url;
+
   function buildTitlePrompt() {
     const title = (titleEl.value || '').trim();
     const niche = (nicheEl.value || '').trim() || 'general';
-    return (pTitleEl.value || DEF_PROMPT_TITLE).replace(/\[TITLE\]/g, title).replace(/\[NICHE\]/g, niche);
+    let p = (pTitleEl.value || DEF_PROMPT_TITLE).replace(/\[TITLE\]/g, title).replace(/\[NICHE\]/g, niche);
+    if (refMode() !== 'off') p += refGuard(refMode(), niche, 'the headline');
+    return p;
   }
   function buildDescPrompt(desc) {
     const niche = (nicheEl.value || '').trim() || 'general';
-    return (pDescEl.value || DEF_PROMPT_DESC).replace(/\[DESC\]/g, desc).replace(/\[NICHE\]/g, niche);
+    let p = (pDescEl.value || DEF_PROMPT_DESC).replace(/\[DESC\]/g, desc).replace(/\[NICHE\]/g, niche);
+    if (refMode() !== 'off') p += refGuard(refMode(), niche, 'the content');
+    return p;
   }
 
   // sau khi có ảnh gốc → ghép khung + overlay rồi mới hiển thị / lưu
@@ -16087,7 +16133,7 @@ Số mục hoàn toàn do bạn quyết dựa trên nội dung — không mặc 
       if (!isTitle && !descs[idx]) throw new Error('Mô tả trống.');
       const prompt = isTitle ? buildTitlePrompt() : buildDescPrompt(descs[idx]);
       cardSet(key, { st: '⏳ đang gen…' });
-      const url = await genImage(prompt, isTitle ? refTImg.src : refDImg.src,
+      const url = await genImage(prompt, refFor(isTitle ? refTImg.src : refDImg.src),
                                  isTitle ? STYLE_TXT_TITLE : STYLE_TXT_DESC,
                                  (m) => cardSet(key, { st: '⏳ ' + m }));
       await applyRaw(key, url);
@@ -16128,8 +16174,8 @@ Số mục hoàn toàn do bạn quyết dựa trên nội dung — không mặc 
     const tick = () => { progEl.textContent = (done + fail) + '/' + total; };
     tick();
 
-    const jobs = [{ key: 'title', prompt: buildTitlePrompt(), ref: refTImg.src, fb: STYLE_TXT_TITLE }]
-      .concat(descs.map((d, i) => ({ key: 'd' + i, prompt: buildDescPrompt(d), ref: refDImg.src, fb: STYLE_TXT_DESC, idx: i })));
+    const jobs = [{ key: 'title', prompt: buildTitlePrompt(), ref: refFor(refTImg.src), fb: STYLE_TXT_TITLE }]
+      .concat(descs.map((d, i) => ({ key: 'd' + i, prompt: buildDescPrompt(d), ref: refFor(refDImg.src), fb: STYLE_TXT_DESC, idx: i })));
 
     for (let j = 0; j < jobs.length; j++) {
       if (cancelFlag) { stopped = true; break; }
