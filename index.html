@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_114 — Flash Card FIX: ảnh gen ra bị chép nguyên chữ của ảnh mẫu. Prompt nay nêu rõ đâu là chữ duy nhất được vẽ lên ảnh, kèm khối lệnh cấm sao chép chữ/nội dung của ảnh mẫu (endpoint edits vốn hay chỉ sửa nhẹ ảnh gửi vào). Thêm ô chọn mức bám ảnh mẫu: chỉ lấy phong cách / bám bố cục / không gửi ảnh mẫu. Không đụng tab 9:16 / 16:9 / Cheatsheet. -->
+<!-- Manim Studio v38_18_3_115 — Flash Card FIX: chữ trên ảnh ra tiếng Việt. Nay text được DỊCH SANG TIẾNG ANH trước khi gửi cho model ảnh (1 lần cho cả loạt, có cache), thay vì trông chờ model ảnh tự dịch; kèm khối lệnh LANGUAGE bắt buộc tiếng Anh nối vào mọi prompt ảnh. Có ô tắt/bật việc dịch trước. Không đụng tab 9:16 / 16:9 / Cheatsheet. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1746,6 +1746,10 @@
       </div>
 
       <!-- GEN ẢNH -->
+      <label style="display:flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#9aa0ac;cursor:pointer">
+        <input type="checkbox" id="fcTranslateEn" checked style="accent-color:#c8ff2e;width:15px;height:15px;cursor:pointer">
+        Dịch text sang tiếng Anh <b style="color:#c8ff2e">trước</b> khi gen ảnh — chữ trên ảnh mới chắc chắn là tiếng Anh
+      </label>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <button id="fcGenAllBtn" class="fc-btn-lime" style="flex:1;min-width:200px">🎨 GEN TẤT CẢ ẢNH (9:16)</button>
         <button id="fcStopBtn" class="fc-btn" style="display:none;border-color:#ff6b6b;color:#ff6b6b">■ Dừng</button>
@@ -15264,6 +15268,7 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     pTitle: 'manim_fc_prompt_title_v2',
     pDesc:  'manim_fc_prompt_desc_v2',
     refMode:'manim_fc_ref_mode_v1',
+    tren:   'manim_fc_translate_en_v1',
     engine: 'manim_fc_engine_v1',
     delay:  'manim_fc_delay_v1',
     refT:   'manim_fc_ref_title_v1',
@@ -15322,6 +15327,12 @@ Số mục hoàn toàn do bạn quyết dựa trên nội dung — không mặc 
 
 tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ bằng tiếng anh , nền trắng . Layout 9:16 [NICHE] + [DESC] lưu ý : nếu từ ngữ nào vi phạm chính sách thì có thể thay thế bằng từ ngữ khác tương đương không bị vi phạm`;
 
+  const LANG_RULE =
+'\n\n=== LANGUAGE — HARD REQUIREMENT ===\n' +
+'- EVERY word rendered inside the image MUST be in English.\n' +
+'- Never draw Vietnamese (or any non-English) text, not even a single word, label or caption.\n' +
+'- If the source wording above is not English, translate it into natural English first, then draw the English version.';
+
   // Chặn model chép nguyên nội dung ảnh mẫu (endpoint edits vốn có xu hướng "sửa nhẹ" ảnh gửi vào)
   function refGuard(mode, niche, what) {
     const n = niche || 'the topic';
@@ -15376,6 +15387,7 @@ tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ b
   const refTImg   = $('fcRefTitleImg');
   const refDImg   = $('fcRefDescImg');
   const refModeEl = $('fcRefMode');
+  const transEl   = $('fcTranslateEn');
   const lightbox  = $('fcLightbox');
   const lightImg  = $('fcLightboxImg');
   const boxWEl    = $('fcBoxW');
@@ -15410,6 +15422,7 @@ tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ b
   refTImg.src = lsGet(K.refT, '') || REF_TITLE_DEFAULT;
   refDImg.src = lsGet(K.refD, '') || REF_DESC_DEFAULT;
   if (refModeEl) { refModeEl.value = lsGet(K.refMode, 'style'); refModeEl.addEventListener('change', () => lsSet(K.refMode, refModeEl.value)); }
+  if (transEl) { transEl.checked = lsGet(K.tren, '1') === '1'; transEl.addEventListener('change', () => lsSet(K.tren, transEl.checked ? '1' : '0')); }
   boxWEl.value = lsGet(K.boxW, '855');
   boxHEl.value = lsGet(K.boxH, '1520');
   bgEl.value   = lsGet(K.bg, '#ffffff');
@@ -15876,6 +15889,44 @@ tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ b
     return data?.choices?.[0]?.message?.content || '';
   }
 
+  // Parser cho danh sách dịch: không lọc theo độ dài, không cắt bớt
+  function parseArr(raw) {
+    let p = null;
+    try { p = (typeof safeJsonParse === 'function') ? safeJsonParse(raw) : JSON.parse(raw); }
+    catch (e) { try { p = JSON.parse(raw); } catch (e2) { p = null; } }
+    if (Array.isArray(p)) return p.map(v => String(v).trim());
+    if (p && Array.isArray(p.items)) return p.items.map(v => String(v).trim());
+    return String(raw).split(/\n+/).map(x => x.replace(/^\s*\d+[\.\)]\s*/, '').trim()).filter(Boolean);
+  }
+
+  // Dịch sang tiếng Anh TRƯỚC khi gửi cho model ảnh — chắc chắn hơn là nhờ model ảnh tự dịch
+  const enCache = new Map();
+  async function translateBatch(list) {
+    const need = list.filter(t => t && !enCache.has(t));
+    if (need.length) {
+      const prompt =
+`Translate each item below into natural, concise English suitable for a poster / infographic card.
+
+Rules:
+- Keep technical exam terms exactly as-is (they are already English).
+- If an item is already fully English, return it unchanged.
+- Do not add, remove or explain anything. Same meaning, same number of items, same order.
+- Plain text only, no quotes, no numbering.
+
+ITEMS:
+${need.map((t, i) => (i + 1) + '. ' + t).join('\n')}
+
+Return ONLY JSON: {"items":["...","..."]}`;
+      let raw = '';
+      try { raw = await geminiJSON(prompt); }
+      catch (e) { raw = await openaiJSON(prompt); }
+      const arr = parseArr(raw);
+      if (arr.length !== need.length) throw new Error('Dịch trả về ' + arr.length + '/' + need.length + ' mục.');
+      need.forEach((t, i) => { if (arr[i]) enCache.set(t, arr[i]); });
+    }
+    return list.map(t => enCache.get(t) || t);
+  }
+
   function parseItems(raw) {
     let parsed = null;
     try { parsed = (typeof safeJsonParse === 'function') ? safeJsonParse(raw) : JSON.parse(raw); }
@@ -16100,18 +16151,23 @@ tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ b
   // mức 'off' → không đính ảnh mẫu, thay bằng mô tả phong cách dạng chữ
   const refFor = (url) => refMode() === 'off' ? null : url;
 
-  function buildTitlePrompt() {
-    const title = (titleEl.value || '').trim();
+  function buildTitlePrompt(overrideTitle) {
+    const title = String(overrideTitle !== undefined ? overrideTitle : (titleEl.value || '')).trim();
     const niche = (nicheEl.value || '').trim() || 'general';
     let p = (pTitleEl.value || DEF_PROMPT_TITLE).replace(/\[TITLE\]/g, title).replace(/\[NICHE\]/g, niche);
     if (refMode() !== 'off') p += refGuard(refMode(), niche, 'the headline');
-    return p;
+    return p + LANG_RULE;
   }
   function buildDescPrompt(desc) {
     const niche = (nicheEl.value || '').trim() || 'general';
-    let p = (pDescEl.value || DEF_PROMPT_DESC).replace(/\[DESC\]/g, desc).replace(/\[NICHE\]/g, niche);
+    let p = (pDescEl.value || DEF_PROMPT_DESC).replace(/\[DESC\]/g, String(desc)).replace(/\[NICHE\]/g, niche);
     if (refMode() !== 'off') p += refGuard(refMode(), niche, 'the content');
-    return p;
+    return p + LANG_RULE;
+  }
+  const wantEN = () => !!(transEl && transEl.checked);
+  async function toEN(one) {
+    if (!wantEN()) return one;
+    try { return (await translateBatch([one]))[0]; } catch (e) { return one; }
   }
 
   // sau khi có ảnh gốc → ghép khung + overlay rồi mới hiển thị / lưu
@@ -16131,7 +16187,9 @@ tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ b
       const isTitle = key === 'title';
       const idx = isTitle ? -1 : parseInt(key.slice(1), 10);
       if (!isTitle && !descs[idx]) throw new Error('Mô tả trống.');
-      const prompt = isTitle ? buildTitlePrompt() : buildDescPrompt(descs[idx]);
+      let src = isTitle ? (titleEl.value || '').trim() : descs[idx];
+      if (wantEN()) { cardSet(key, { st: '⏳ dịch sang tiếng Anh…' }); src = await toEN(src); }
+      const prompt = isTitle ? buildTitlePrompt(src) : buildDescPrompt(src);
       cardSet(key, { st: '⏳ đang gen…' });
       const url = await genImage(prompt, refFor(isTitle ? refTImg.src : refDImg.src),
                                  isTitle ? STYLE_TXT_TITLE : STYLE_TXT_DESC,
@@ -16174,8 +16232,21 @@ tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ b
     const tick = () => { progEl.textContent = (done + fail) + '/' + total; };
     tick();
 
-    const jobs = [{ key: 'title', prompt: buildTitlePrompt(), ref: refFor(refTImg.src), fb: STYLE_TXT_TITLE }]
-      .concat(descs.map((d, i) => ({ key: 'd' + i, prompt: buildDescPrompt(d), ref: refFor(refDImg.src), fb: STYLE_TXT_DESC, idx: i })));
+    let enTitle = title, enDescs = descs.slice();
+    if (wantEN() && !cancelFlag) {
+      setStatus('⏳ Đang dịch text sang tiếng Anh trước khi gen…');
+      try {
+        const out = await translateBatch([title].concat(descs));
+        enTitle = out[0]; enDescs = out.slice(1);
+      } catch (e) {
+        console.warn('[flashcard/translate]', e);
+        setStatus('⚠ Dịch lỗi (' + String(e.message).slice(0, 60) + ') — vẫn gen, dựa vào lệnh tiếng Anh trong prompt.', 'err');
+        await sleepCancellable(900);
+      }
+    }
+
+    const jobs = [{ key: 'title', prompt: buildTitlePrompt(enTitle), ref: refFor(refTImg.src), fb: STYLE_TXT_TITLE }]
+      .concat(enDescs.map((d, i) => ({ key: 'd' + i, prompt: buildDescPrompt(d), ref: refFor(refDImg.src), fb: STYLE_TXT_DESC, idx: i })));
 
     for (let j = 0; j < jobs.length; j++) {
       if (cancelFlag) { stopped = true; break; }
