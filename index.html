@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_115 — Flash Card FIX: chữ trên ảnh ra tiếng Việt. Nay text được DỊCH SANG TIẾNG ANH trước khi gửi cho model ảnh (1 lần cho cả loạt, có cache), thay vì trông chờ model ảnh tự dịch; kèm khối lệnh LANGUAGE bắt buộc tiếng Anh nối vào mọi prompt ảnh. Có ô tắt/bật việc dịch trước. Không đụng tab 9:16 / 16:9 / Cheatsheet. -->
+<!-- Manim Studio v38_18_3_117 — FIX: kịch bản thiếu marker nên bước cuối không hiện lên khi đọc. Prompt nay bắt buộc mỗi bước viết tay đúng 1 marker (kể cả bước 1 chỉ viết lại đề), và dưới ô kịch bản có dòng đối chiếu số marker / số bước, báo đỏ khi thiếu kèm nút 🩹 nhờ Gemini chèn lại marker. Giữ nguyên v116: model 3.x + chuỗi phao. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2053,7 +2053,7 @@
       <div>
         <strong style="color:var(--text)">Dùng Service Account (Vertex AI):</strong>
         bấm <strong>🔑 NẠP SA JSON</strong> ở thanh trên → chọn file key của project <code>abc-elearning-apps-ai</code>.
-        Key chỉ giữ trong bộ nhớ phiên trình duyệt (KHÔNG lưu vào file HTML). Mọi request Gemini gắn nhãn <code>"service_account": "video MCQs"</code>. Model: <code>gemini-2.5-flash</code>.
+        Key chỉ giữ trong bộ nhớ phiên trình duyệt (KHÔNG lưu vào file HTML). Mọi request Gemini gắn nhãn <code>"service_account": "video MCQs"</code>. Model: <code>gemini-3.5-flash-lite</code>.
       </div>
     </div>
 
@@ -2729,8 +2729,9 @@ Cube means multiply by itself three times. [1] So eight times eight times eight.
 [3] Equals five hundred twelve.
 
 The answer is D.</textarea>
-            <div class="marker-help">
-              USE <span class="marker-tag">[1]</span> <span class="marker-tag">[2]</span> <span class="marker-tag">[3]</span> TO TRIGGER STEP WRITE-ON · MATCHES SOLUTION ORDER
+            <div class="marker-help" id="markerHelp" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span id="markerStatus" style="flex:1;min-width:220px">USE <span class="marker-tag">[1]</span> <span class="marker-tag">[2]</span> <span class="marker-tag">[3]</span> TO TRIGGER STEP WRITE-ON · MATCHES SOLUTION ORDER</span>
+              <button id="fixMarkersBtn" type="button" style="display:none;background:#1c2029;border:1px solid #ff6b6b;color:#ff6b6b;font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:6px 10px;border-radius:7px;cursor:pointer;white-space:nowrap">🩹 CHÈN MARKER THIẾU</button>
             </div>
           </div>
         </div>
@@ -2803,15 +2804,27 @@ let calibratedWPS = 2.45;  // giọng đọc số đánh vần khá chậm; sẽ
 try { const _w = parseFloat(sessionStorage.getItem('manim_wps')); if (_w > 1 && _w < 6) calibratedWPS = _w; } catch (e) {}
 function targetIntroWords() { return Math.round(STEP1_TARGET_SEC * calibratedWPS); }
 function countWords(s) { return (String(s).trim().match(/\S+/g) || []).length; }
-// Research/script model. TTS unaffected.
-function getResearchModel() {
-  return 'gemini-2.5-flash';
+// ============================================================
+// MODEL REGISTRY [v116] — Gemini 2.5 sẽ bị Google tắt trong 10/2026,
+// nên toàn bộ tool chạy trên 3.x. Vẫn giữ 2.5 làm phao: nếu project chưa
+// bật 3.x (404) thì tự tụt xuống 2.5 và nhớ luôn cho cả phiên, không hỏi lại.
+// ============================================================
+const TEXT_MODEL_PRIMARY  = 'gemini-3.5-flash-lite';
+const TEXT_MODEL_FALLBACK = 'gemini-2.5-flash';
+let ACTIVE_TEXT_MODEL = null;   // null = chưa phải tụt hạng, đang dùng PRIMARY
+
+function demoteTextModel(why) {
+  if (ACTIVE_TEXT_MODEL === TEXT_MODEL_FALLBACK) return false;
+  ACTIVE_TEXT_MODEL = TEXT_MODEL_FALLBACK;
+  console.warn(`[model] ${TEXT_MODEL_PRIMARY} không dùng được (${why || ''}) → chuyển cả phiên sang ${TEXT_MODEL_FALLBACK}`);
+  return true;
 }
-// GEN script uses 2.5-flash — same as research. gemini-3.5-flash isn't
-// available for every Vertex AI project in us-central1 (404), so we default
-// to 2.5 which is universally rolled out.
+// Research + GEN script dùng chung một model.
 function getScriptModel() {
-  return 'gemini-2.5-flash';
+  return ACTIVE_TEXT_MODEL || TEXT_MODEL_PRIMARY;
+}
+function getResearchModel() {
+  return getScriptModel();
 }
 
 // ============================================================
@@ -2911,8 +2924,16 @@ function updateKeyStatusUI() {
   }
 }
 // Vertex endpoint builder (thay cho generativelanguage + ?key=)
-function vertexModelUrl(model) {
-  return `https://us-central1-aiplatform.googleapis.com/v1/projects/${SVC_ACC.project_id}/locations/us-central1/publishers/google/models/${model}:generateContent`;
+// Gemini 3.x phục vụ qua endpoint `global`; 2.x vẫn ở us-central1.
+function vertexLocation(model) {
+  return /^gemini-3/.test(String(model)) ? 'global' : 'us-central1';
+}
+function vertexHost(loc) {
+  return loc === 'global' ? 'aiplatform.googleapis.com' : `${loc}-aiplatform.googleapis.com`;
+}
+function vertexModelUrl(model, loc) {
+  const L = loc || vertexLocation(model);
+  return `https://${vertexHost(L)}/v1/projects/${SVC_ACC.project_id}/locations/${L}/publishers/google/models/${model}:generateContent`;
 }
 
 // ============================================================
@@ -2927,7 +2948,14 @@ function vertexModelUrl(model) {
 //   4. renderFrame16x9_notebooklm composites them scattered around the text
 // ============================================================
 
-const ILLUSTRATION_MODEL = 'gemini-2.5-flash-image-preview';
+// [v116] ILLUSTRATION_MODEL (gemini-2.5-flash-image-preview) đã gỡ — không nơi nào dùng.
+// Chuỗi model TTS, xem callGeminiTTS.
+const TTS_CHAIN = [
+  { id: 'gemini-3.1-flash-tts-preview', loc: 'global' },
+  { id: 'gemini-3.1-flash-tts-preview', loc: 'us-central1' },
+  { id: 'gemini-2.5-flash-preview-tts', loc: 'us-central1' }   // phao cuối, Google tắt 10/2026
+];
+let ACTIVE_TTS_IDX = 0;
 const ILLUSTRATIONS_STORAGE_KEY = 'manim_studio_illustrations_v1' + WSX;
 
 // ============================================================
@@ -3683,11 +3711,12 @@ async function extractSceneConcepts(scriptText, onStatus = () => {}) {
 // quality — standard/preview models before fast — so any image we generate is
 // as high-fidelity as the project can produce.
 const IMAGE_GEN_MODELS = [
-  { id: 'imagen-4.0-generate-preview-06-06',      kind: 'imagen' },  // Imagen 4 preview, highest quality
-  { id: 'imagen-4.0-fast-generate-preview-06-06', kind: 'imagen' },  // Imagen 4 fast
-  { id: 'imagen-3.0-generate-001',                kind: 'imagen' },  // Imagen 3 standard
-  { id: 'gemini-2.5-flash-image-preview',         kind: 'gemini' },  // Gemini image preview
-  { id: 'imagen-3.0-fast-generate-001',           kind: 'imagen' }   // Imagen 3 fast (last resort, lowest quality)
+  { id: 'gemini-3.1-flash-image',      kind: 'gemini', loc: 'global' },      // Nano Banana 2 — mặc định
+  { id: 'gemini-3.1-flash-lite-image', kind: 'gemini', loc: 'global' },      // rẻ + nhanh hơn
+  { id: 'gemini-3-pro-image',          kind: 'gemini', loc: 'global' },      // Nano Banana Pro — nét nhất
+  // Imagen: Google tắt sớm nhất 17/08/2026, chỉ giữ làm phao cuối cho project cũ.
+  { id: 'imagen-4.0-generate-preview-06-06', kind: 'imagen', loc: 'us-central1' },
+  { id: 'imagen-3.0-generate-001',           kind: 'imagen', loc: 'us-central1' }
 ];
 // Remember which model works for this session so we don't retry the 404s
 let workingImageModelIdx = 0;
@@ -3700,7 +3729,8 @@ async function tryImageModel(model, prompt, token, aspectRatio = '16:9') {
     const gPrompt = aspectRatio === '9:16'
       ? prompt + '\n\nOUTPUT FORMAT: tall vertical 9:16 portrait image (fills a phone screen top to bottom).'
       : prompt;
-    const url = `https://us-central1-aiplatform.googleapis.com/v1/projects/${SVC_ACC.project_id}/locations/us-central1/publishers/google/models/${model.id}:generateContent`;
+    const gLoc = model.loc || 'us-central1';
+    const url = `https://${vertexHost(gLoc)}/v1/projects/${SVC_ACC.project_id}/locations/${gLoc}/publishers/google/models/${model.id}:generateContent`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -3724,7 +3754,8 @@ async function tryImageModel(model, prompt, token, aspectRatio = '16:9') {
   }
   if (model.kind === 'imagen') {
     // Imagen 3/4 uses :predict with a different request/response shape.
-    const url = `https://us-central1-aiplatform.googleapis.com/v1/projects/${SVC_ACC.project_id}/locations/us-central1/publishers/google/models/${model.id}:predict`;
+    const iLoc = model.loc || 'us-central1';
+    const url = `https://${vertexHost(iLoc)}/v1/projects/${SVC_ACC.project_id}/locations/${iLoc}/publishers/google/models/${model.id}:predict`;
     // Try progressively more permissive safety filter levels. If the first
     // attempt returns empty (safety block), retry with block_none before
     // giving up so the fallback chain doesn't have to try another model.
@@ -4025,6 +4056,7 @@ function safeJsonParse(raw) {
 //   opts.onStatus(msg) — optional callback to surface retry messages in UI.
 // ============================================================
 async function fetchGeminiWithRetry(url, payload, opts = {}) {
+  let reqUrl = url;                       // [v116] có thể đổi nếu phải tụt model
   const maxNet = opts.maxAttempts || 5;
   const onStatus = opts.onStatus || (() => {});
   if (!payload.labels) payload.labels = {};
@@ -4033,7 +4065,7 @@ async function fetchGeminiWithRetry(url, payload, opts = {}) {
   // Tham số khác nhau theo model: Gemini 3.x dùng thinkingLevel, 2.x dùng thinkingBudget.
   if (!payload.generationConfig) payload.generationConfig = {};
   if (!payload.generationConfig.thinkingConfig) {
-    payload.generationConfig.thinkingConfig = /gemini-3/.test(url)
+    payload.generationConfig.thinkingConfig = /gemini-3/.test(reqUrl)
       ? { thinkingLevel: "minimal" }   // Gemini 3.x
       : { thinkingBudget: 0 };          // Gemini 2.x (tắt thinking)
   }
@@ -4042,7 +4074,7 @@ async function fetchGeminiWithRetry(url, payload, opts = {}) {
     let res;
     try {
       const token = await getVertexAccessToken();
-      res = await fetch(url, {
+      res = await fetch(reqUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify(payload)
@@ -4064,6 +4096,17 @@ async function fetchGeminiWithRetry(url, payload, opts = {}) {
     const errText = await res.text();
     const isTransient = status === 500 || status === 502 || status === 503 || status === 504 || status === 429 || status === 499 || status === 408;
     lastErr = new Error(`HTTP ${status}: ${errText.slice(0, 160)}`);
+
+    // [v116] Project chưa bật model 3.x → tụt về 2.5 rồi thử lại ngay,
+    // thay vì ném lỗi ra mặt người dùng.
+    const modelMissing = status === 404 ||
+      (status === 400 && /not found|not supported|does not exist|is not available|invalid model/i.test(errText));
+    if (modelMissing && reqUrl.indexOf(TEXT_MODEL_PRIMARY) >= 0 && demoteTextModel(`HTTP ${status}`)) {
+      reqUrl = vertexModelUrl(TEXT_MODEL_FALLBACK);
+      payload.generationConfig.thinkingConfig = { thinkingBudget: 0 };  // 2.x không hiểu thinkingLevel
+      onStatus(`⚠ ${TEXT_MODEL_PRIMARY} chưa bật cho project — chuyển sang ${TEXT_MODEL_FALLBACK}.`);
+      continue;
+    }
 
     if (isTransient && attempt < maxNet) {
       // 429 = quota-per-minute → the window resets after 60s, so backoff needs
@@ -5089,7 +5132,13 @@ async function callGeminiTTS(text, opts = {}) {
     if (style) ttsText = `${style}: ${pureText}`;
   }
 
-  const url = `https://us-central1-aiplatform.googleapis.com/v1/projects/${SVC_ACC.project_id}/locations/us-central1/publishers/google/models/gemini-2.5-flash-preview-tts:generateContent`;
+  // [v116] Thử lần lượt: 3.1 TTS @global → 3.1 TTS @us-central1 → 2.5 TTS.
+  // Chọn được cái nào thì nhớ cho cả phiên (ACTIVE_TTS_IDX).
+  let ttsIdx = ACTIVE_TTS_IDX;
+  const ttsUrl = () => {
+    const m = TTS_CHAIN[ttsIdx];
+    return `https://${vertexHost(m.loc)}/v1/projects/${SVC_ACC.project_id}/locations/${m.loc}/publishers/google/models/${m.id}:generateContent`;
+  };
   const payload = {
     contents: [{ role: "user", parts: [{ text: ttsText }] }],
     generationConfig: {
@@ -5110,7 +5159,7 @@ async function callGeminiTTS(text, opts = {}) {
     let res;
     try {
       const token = await getVertexAccessToken();
-      res = await fetch(url, {
+      res = await fetch(ttsUrl(), {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify(payload)
       });
     } catch (netErr) {
@@ -5149,6 +5198,15 @@ async function callGeminiTTS(text, opts = {}) {
     const status = res.status;
     const isTransient = status === 500 || status === 503 || status === 429 || status === 502 || status === 504 || status === 499 || status === 408;
     lastErr = new Error(`HTTP ${status}: ${errText.slice(0, 150)}`);
+
+    // [v116] Model TTS này không có ở project/vùng đó → sang mắt xích kế tiếp.
+    const ttsMissing = status === 404 ||
+      (status === 400 && /not found|not supported|does not exist|is not available|invalid model/i.test(errText));
+    if (ttsMissing && ttsIdx < TTS_CHAIN.length - 1) {
+      ttsIdx++; ACTIVE_TTS_IDX = ttsIdx;
+      console.warn(`[callGeminiTTS] đổi sang ${TTS_CHAIN[ttsIdx].id} @ ${TTS_CHAIN[ttsIdx].loc}`);
+      continue;
+    }
 
     if (isTransient && attempt < maxAttempts) {
       // 429 quota-per-minute needs 60s window to reset — use long backoff.
@@ -9798,7 +9856,7 @@ WRITING RULES (universal — apply to every subject)
 ═══════════════════════════════════════════
 1. SHORT sentences (avg 6-10 words). Sound like a person talking, not a textbook. Use em-dashes — for natural speech rhythm.
 2. In english_script, SPELL OUT numbers ("fifty-five" not "55", "point-eight" not "0.8"). TTS reads spelled numbers more naturally. BUT in OPTIONS and STEPS (on-screen text), keep numbers as DIGITS.
-3. Markers [1] [2] [3] — marker [1] goes at the END of section [B] (decode + first action). Markers [2] [3] [4]... go in section [C]. Total number of markers MUST EQUAL the length of the "steps" array.
+3. Markers [1] [2] [3] — marker [1] goes at the END of section [B] (decode + first action). Markers [2] [3] [4]... go in section [C]. Total number of markers MUST EQUAL the length of the "steps" array — count them before you answer. ⛔ HARD RULE: EVERY item in "steps" gets its own marker, including the FIRST one even when it is just the restated problem or setup line (e.g. steps[0] = "2^5"). Never fold step 1 into the intro narration and start marking from the second step — that shifts every marker by one and the LAST step then never appears on screen. If "steps" has 5 items, the script contains [1] [2] [3] [4] [5]: five markers, no more, no less.
 4. Total word count: 160-210 words — keep it TIGHT, especially the intro. Count carefully.
 5. ⭐ TONE — warm tutor, NEVER hype-bro:
    AVOID:
@@ -10606,7 +10664,7 @@ YOUR JOB
    GOLD EXAMPLE for "4x = 15, x = ?":  steps = ["4x = 15", "Divide both sides by 4", "x = 15/4", "x = 3.75"]  (clean, logical, easy — exactly like a teacher would write).
    GOLD EXAMPLE (phần trăm + rút gọn — HIỆN RÕ phép toán) for "12 is what percent of 80?":  steps = ["12 = P × 80", "P = 12 ÷ 80", "P = 12/80", "12/80 ÷ 4 = 3/20", "3/20 × 5 = 15/100 = 15%"]
 
-2) Generate "english_script" — 160-210 word spoken narration (keep it tight) that walks through the solution, using markers [1] [2] [3] etc. matching the number of steps.
+2) Generate "english_script" — 160-210 word spoken narration (keep it tight) that walks through the solution, using markers [1] [2] [3] etc. The number of markers MUST equal the number of items in "steps", one marker per step, ascending, each used exactly once. The first step counts too even if it only restates the problem — mark it [1]; do not start marking at the second step.
 
 ⭐ TONE: như một người bạn/anh chị kèm học thân thiện, nói chuyện bình dân, dễ gần — KHÔNG ra vẻ "cao siêu". Hook có thể mạnh để giữ chân người xem, nhưng phần GIẢI phải mộc mạc, đơn giản, ai cũng hiểu. Mọi con số/bước phải ĐÚNG và THẬT — không bịa "90% trượt", không câu view dối. Cho phép MỘT nhịp "đoán thử đi" (vd "What's your answer?"). Cấm câu sáo rỗng "Pause the video!" / "Comment below!".
 
@@ -10657,7 +10715,7 @@ WRITING RULES
 - ⭐ NGÔN NGỮ ĐỜI THƯỜNG: từ dễ, câu thẳng, không thuật ngữ, không câu lằng nhằng nhiều vế. Học sinh lớp 6 nghe một lần là hiểu.
 - In english_script: SPELL OUT numbers ("fifty-five" not "55") so TTS sounds natural
 - In steps array: keep numbers as DIGITS
-- Markers [1] [2] [3] — đặt trong PHẦN 3–4 (các bước giải + mẹo), [1] ở bước đầu tiên. Tổng marker = số phần tử steps.
+- Markers [1] [2] [3] — đặt trong PHẦN 3–4 (các bước giải + mẹo), [1] ở bước đầu tiên. Tổng marker = số phần tử steps, mỗi bước đúng 1 marker, không bỏ bước nào. Bước 1 dù chỉ là viết lại đề vẫn phải có [1] — bỏ qua nó là mọi marker lệch 1 và bước cuối không bao giờ hiện.
 - ⭐ ĐỘ DÀI: TỔNG ${_totalLo}-${_totalHi} từ (video ~45-58s, DƯỚI 60s, theo khung 5 phần). ƯU TIÊN mạch lạc, rõ ràng & dễ hiểu hơn là bám từng giây.
 - ⭐⭐ LIỀN MẠCH (bắt buộc): kịch bản phải đọc như MỘT lời giải trôi chảy từ đầu đến cuối — mỗi câu nối ý câu trước, giải xong ý này mới sang ý khác, KHÔNG giật cục, KHÔNG nhảy chủ đề giữa chừng. Dùng từ nối tự nhiên giữa các bước.
 - ⭐ ACCURACY IS NON-NEGOTIABLE: every fact, number, decode, and step must be CORRECT. The hook can be provocative and curiosity-driven, but it must be TRUE — never fabricate stats, never claim something false to sound dramatic.
@@ -15237,6 +15295,159 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
 })();
 
 /* ============================================================
+   STEP ↔ MARKER GUARD  [v38_18_3_117]
+   Đếm marker [N] trong kịch bản và so với số bước viết tay.
+   Thiếu marker = bước đó KHÔNG BAO GIỜ hiện lên khi đọc, nên báo ngay
+   dưới ô kịch bản, kèm nút nhờ Gemini chèn lại marker cho đúng.
+   Chỉ đọc + hiển thị; không tự sửa gì nếu người dùng không bấm.
+   ============================================================ */
+(function () {
+  const scriptEl = document.getElementById('scriptText');
+  const statusEl = document.getElementById('markerStatus');
+  const fixBtn   = document.getElementById('fixMarkersBtn');
+  if (!scriptEl || !statusEl) return;
+
+  const DEFAULT_HINT =
+    'USE <span class="marker-tag">[1]</span> <span class="marker-tag">[2]</span> ' +
+    '<span class="marker-tag">[3]</span> TO TRIGGER STEP WRITE-ON · MATCHES SOLUTION ORDER';
+
+  function stepTexts() {
+    const c = document.getElementById('stepsContainer');
+    if (!c) return [];
+    return Array.from(c.querySelectorAll('.step-row')).map(r => {
+      const i = r.querySelector('.input');
+      return i ? i.value.trim() : '';
+    });
+  }
+
+  // Dùng đúng bộ chuẩn hoá của lúc chạy thật, để cái đếm ở đây khớp 100%
+  // với cái mà splitScriptByMarkers() nhìn thấy.
+  function scriptMarkers() {
+    const raw = scriptEl.value || '';
+    const norm = (typeof normalizeScriptMarkers === 'function') ? normalizeScriptMarkers(raw) : raw;
+    const out = [];
+    const re = /\[(\d+)\]/g;
+    let m;
+    while ((m = re.exec(norm)) !== null) out.push(parseInt(m[1], 10));
+    return out;
+  }
+
+  function audit() {
+    const n = stepTexts().length;
+    const marks = scriptMarkers();
+    const seen = new Set(marks);
+    const missing = [];
+    for (let i = 1; i <= n; i++) if (!seen.has(i)) missing.push(i);
+    const extra = marks.filter(v => v < 1 || v > n);
+    const dup = marks.filter((v, i) => marks.indexOf(v) !== i);
+    return { n, marks, missing, extra: Array.from(new Set(extra)), dup: Array.from(new Set(dup)) };
+  }
+
+  function refresh() {
+    const a = audit();
+    if (!a.n) { statusEl.innerHTML = DEFAULT_HINT; statusEl.style.color = ''; if (fixBtn) fixBtn.style.display = 'none'; return a; }
+
+    const tag = (i) => '<span class="marker-tag">[' + i + ']</span>';
+    const problems = [];
+    if (a.missing.length) problems.push('thiếu ' + a.missing.map(tag).join(' ') + ' → bước ' + a.missing.join(', ') + ' sẽ KHÔNG hiện lên khi đọc');
+    if (a.extra.length)   problems.push('marker ' + a.extra.map(tag).join(' ') + ' không có bước tương ứng');
+    if (a.dup.length)     problems.push('marker ' + a.dup.map(tag).join(' ') + ' bị lặp');
+
+    if (problems.length) {
+      const covered = a.n - a.missing.length;
+      statusEl.innerHTML = '⚠ ' + covered + '/' + a.n + ' BƯỚC CÓ MARKER — ' + problems.join(' · ');
+      statusEl.style.color = '#ff6b6b';
+      if (fixBtn) fixBtn.style.display = '';
+    } else {
+      statusEl.innerHTML = '✓ ' + a.n + '/' + a.n + ' BƯỚC CÓ MARKER — mỗi bước đều hiện lên khi đọc';
+      statusEl.style.color = '#c8ff2e';
+      if (fixBtn) fixBtn.style.display = 'none';
+    }
+    return a;
+  }
+
+  // ---------- nhờ Gemini chèn lại marker ----------
+  async function repair() {
+    const steps = stepTexts();
+    if (!steps.length) return;
+    if (typeof SVC_ACC === 'undefined' || !SVC_ACC) {
+      alert('Chưa nạp SA JSON — bấm 🔑 NẠP SA JSON ở thanh trên.');
+      return;
+    }
+    const before = scriptEl.value;
+    const prompt =
+`You are fixing sync markers in a short vertical-video voice-over script.
+
+STEPS that appear on screen, in this exact order:
+${steps.map((s, i) => (i + 1) + '. ' + s).join('\n')}
+
+CURRENT SCRIPT (between the ---- lines):
+----
+${before}
+----
+
+TASK — return the SAME script with the markers fixed:
+- It must contain EXACTLY ${steps.length} markers: [1] through [${steps.length}], each exactly once, in ascending order.
+- Marker [k] goes IMMEDIATELY BEFORE the spoken words that say what step k shows on screen.
+- Step 1 is often the restated problem or setup line — it STILL needs marker [1]. Never treat it as intro narration.
+- Do NOT reword, reorder, shorten or expand the spoken text. Move / insert / delete ONLY the bracketed markers.
+- ONLY IF a step has no matching words anywhere in the script, you may add one short natural clause (max 10 words) at the right place so it can be spoken, then put its marker before it.
+- Keep the closing call-to-action exactly as it is.
+
+Return ONLY JSON: {"script":"...full script with markers..."}`;
+
+    const oldLabel = fixBtn ? fixBtn.textContent : '';
+    if (fixBtn) { fixBtn.disabled = true; fixBtn.textContent = '⏳ đang sửa…'; }
+    try {
+      const data = await fetchGeminiWithRetry(
+        vertexModelUrl(getScriptModel()),
+        {
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096, temperature: 0.2 }
+        },
+        { feature: 'fix-markers' }
+      );
+      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const parsed = (typeof safeJsonParse === 'function') ? safeJsonParse(raw) : JSON.parse(raw);
+      const fixed = parsed && typeof parsed.script === 'string' ? parsed.script.trim() : '';
+      if (!fixed) throw new Error('Model không trả về script.');
+
+      // Chốt an toàn: lời đọc không được phình/teo quá 25% — nếu lệch nhiều
+      // nghĩa là nó viết lại bài chứ không phải chỉ chèn marker.
+      const words = (t) => (String(t).replace(/\[\d+\]/g, ' ').trim().match(/\S+/g) || []).length;
+      const w0 = words(before), w1 = words(fixed);
+      if (w0 && (w1 < w0 * 0.75 || w1 > w0 * 1.25)) {
+        if (!confirm('Model đã đổi lời đọc khá nhiều (' + w0 + ' → ' + w1 + ' từ), không chỉ chèn marker.\nVẫn dùng bản mới?')) return;
+      }
+
+      scriptEl.value = fixed;
+      scriptEl.dispatchEvent(new Event('input', { bubbles: true }));
+      const a = refresh();
+      if (a.missing.length || a.extra.length || a.dup.length) {
+        alert('Đã sửa nhưng vẫn chưa khớp — bấm lại lần nữa, hoặc tự thêm marker bằng tay.');
+      }
+    } catch (e) {
+      console.error('[fix-markers]', e);
+      alert('Sửa marker lỗi: ' + e.message);
+    } finally {
+      if (fixBtn) { fixBtn.disabled = false; fixBtn.textContent = oldLabel || '🩹 CHÈN MARKER THIẾU'; }
+    }
+  }
+
+  if (fixBtn) fixBtn.addEventListener('click', repair);
+  scriptEl.addEventListener('input', refresh);
+
+  const cont = document.getElementById('stepsContainer');
+  if (cont && typeof MutationObserver === 'function') {
+    new MutationObserver(refresh).observe(cont, { childList: true, subtree: true });
+    cont.addEventListener('input', refresh);
+  }
+  window.auditStepMarkers = audit;   // để test / gỡ lỗi
+  setTimeout(refresh, 0);
+})();
+
+
+/* ============================================================
    FLASH CARD TAB  [v38_18_3_108]
    Tách biệt hoàn toàn: ID riêng (fc*), localStorage riêng (manim_fc_*),
    không đọc/ghi bất kỳ state nào của tab 9:16 / 16:9 / Cheatsheet.
@@ -15859,7 +16070,7 @@ tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ b
   async function geminiJSON(prompt) {
     if (typeof SVC_ACC === 'undefined' || !SVC_ACC) throw new Error('NO_SA');
     const token = await getVertexAccessToken();
-    const res = await fetch(vertexModelUrl(getScriptModel()), {
+    const call = async () => fetch(vertexModelUrl(getScriptModel()), {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -15867,6 +16078,12 @@ tạo cho tôi ảnh với miêu tả , VD như ảnh trên , 100% ngôn ngữ b
         generationConfig: { responseMimeType: 'application/json', temperature: 0.7 }
       })
     });
+    let res = await call();
+    // [v116] project chưa bật model 3.x → tụt về bản cũ rồi thử lại
+    if (!res.ok && (res.status === 404 || res.status === 400) &&
+        typeof demoteTextModel === 'function' && demoteTextModel('flashcard HTTP ' + res.status)) {
+      res = await call();
+    }
     if (!res.ok) throw new Error('Gemini HTTP ' + res.status + ': ' + (await res.text()).slice(0, 200));
     const data = await res.json();
     return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
@@ -16036,7 +16253,12 @@ Return ONLY JSON: {"items":["...","..."]}`;
     return 'data:image/png;base64,' + b642;
   }
 
-  const GEMINI_IMG_MODELS = ['gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview'];
+  // [v116] Nano Banana 2 trước, rồi bản lite, rồi Pro. Không còn 2.5 (Google tắt 10/2026).
+  const GEMINI_IMG_MODELS = [
+    { id: 'gemini-3.1-flash-image',      loc: 'global' },
+    { id: 'gemini-3.1-flash-lite-image', loc: 'global' },
+    { id: 'gemini-3-pro-image',          loc: 'global' }
+  ];
 
   async function genImageGemini(prompt, refURL, fallbackStyle, onStatus) {
     if (typeof SVC_ACC === 'undefined' || !SVC_ACC) throw new Error('Chưa nạp SA JSON (bấm 🔑 NẠP SA JSON ở thanh trên).');
@@ -16048,12 +16270,13 @@ Return ONLY JSON: {"items":["...","..."]}`;
     }
     parts.push({ text: prompt + (refURL ? '' : (fallbackStyle || '')) + '\n\nOUTPUT FORMAT: tall vertical 9:16 portrait image, white background.' });
     let lastErr;
-    for (const id of GEMINI_IMG_MODELS) {
+    for (const m of GEMINI_IMG_MODELS) {
       if (cancelFlag) throw new Error('__CANCEL__');
       try {
-        onStatus('Gemini ' + id + '…');
-        const url = 'https://us-central1-aiplatform.googleapis.com/v1/projects/' + SVC_ACC.project_id +
-                    '/locations/us-central1/publishers/google/models/' + id + ':generateContent';
+        onStatus('Gemini ' + m.id + '…');
+        const host = m.loc === 'global' ? 'aiplatform.googleapis.com' : m.loc + '-aiplatform.googleapis.com';
+        const url = 'https://' + host + '/v1/projects/' + SVC_ACC.project_id +
+                    '/locations/' + m.loc + '/publishers/google/models/' + m.id + ':generateContent';
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
