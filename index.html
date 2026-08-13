@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_117 — FIX: kịch bản thiếu marker nên bước cuối không hiện lên khi đọc. Prompt nay bắt buộc mỗi bước viết tay đúng 1 marker (kể cả bước 1 chỉ viết lại đề), và dưới ô kịch bản có dòng đối chiếu số marker / số bước, báo đỏ khi thiếu kèm nút 🩹 nhờ Gemini chèn lại marker. Giữ nguyên v116: model 3.x + chuỗi phao. -->
+<!-- Manim Studio v38_18_3_118 — Tab TUẦN: màu badge nay có 2 chế độ. Nút 🔗 CHUNG / 🎨 RIÊNG ngay cạnh 2 ô chọn màu: CHUNG = 1 màu cho cả 7 video (như cũ, mặc định), RIÊNG = mỗi video một màu badge riêng. Chế độ được nhớ lại, áp vào cả preview, zoom và export. Editor 1 VIDEO giữ nguyên bộ màu riêng. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -12910,7 +12910,10 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     logoImg: null, logoRemoved: false, logoName: '',
     logo2Img: null, logo2Name: '', logo2Pct: 28,
     subText: 'Learn Smart, Pass Easy.', subSize: 34, subColor: '#111111',
-    badgeBg: '#8B6F3F', badgeFg: '#FFF8DC',   // màu badge DÙNG CHUNG cả 7 video
+    badgeBg: '#8B6F3F', badgeFg: '#FFF8DC',   // màu badge mặc định của tuần
+    // 'all'  = 1 màu dùng chung cả 7 video (mặc định, như cũ)
+    // 'each' = mỗi video một màu riêng
+    badgeMode: 'all',
     bgMediaEl: null, bgMediaType: null, bgMediaUrl: null, bgMediaName: '',
     overlays: []
   };
@@ -12922,7 +12925,7 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
         bgLineColor: WKE.bgLineColor, bgPattern: WKE.bgPattern,
         qTextColor: WKE.qTextColor, logoPct: WKE.logoPct, logoRemoved: WKE.logoRemoved,
         logo2Pct: WKE.logo2Pct, subText: WKE.subText, subSize: WKE.subSize, subColor: WKE.subColor,
-        badgeBg: WKE.badgeBg, badgeFg: WKE.badgeFg,
+        badgeBg: WKE.badgeBg, badgeFg: WKE.badgeFg, badgeMode: WKE.badgeMode,
         // Object Image không JSON được → lưu dataURL (src) rồi dựng lại lúc load.
         overlays: (WKE.overlays || []).map(o => {
           if (o.kind !== 'img') return o;
@@ -12950,6 +12953,7 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     try {
       const o = JSON.parse(localStorage.getItem(ENV_KEY) || 'null');
       if (o) {
+        WKE.badgeMode = (o.badgeMode === 'each') ? 'each' : 'all';
         ['brandTop', 'bgPreset', 'bgColor', 'bgLineColor', 'bgPattern', 'qTextColor', 'logoPct',
          'logo2Pct', 'subSize', 'subColor', 'badgeBg', 'badgeFg'].forEach(k => {
           if (o[k] != null) WKE[k] = o[k];
@@ -13498,24 +13502,30 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       imgBox.append(imgBtns, imgStat, fileIn);
 
       const badgeBox = document.createElement('div');
-      badgeBox.appendChild(labelEl('Header Badge · text riêng video này · MÀU dùng chung cả 7'));
+      const bLbl = labelEl(badgeLblText());
+      bLbl.classList.add('pm-badge-lbl');
+      badgeBox.appendChild(bLbl);
       const bRow = document.createElement('div');
       bRow.className = 'pm-badge-row';
       const bTxt = document.createElement('input');
       bTxt.className = 'input'; bTxt.value = c.badgeText || ''; bTxt.placeholder = 'badge label';
       bTxt.style.cssText = 'flex:1;min-width:90px';
       bTxt.addEventListener('input', () => { c.badgeText = bTxt.value; schedulePreview(); pmSaveDebounced(); });
-      // Màu badge dùng chung: đổi ở 1 video → cả 7 video ăn theo.
+      // Màu badge: theo WKE.badgeMode — 'all' đổi cả 7, 'each' chỉ đổi video này.
       const bBg = document.createElement('input');
-      bBg.type = 'color'; bBg.value = c.badgeBg || WKE.badgeBg || '#8B6F3F';
-      bBg.title = 'Màu nền badge — đổi ở đây thì CẢ 7 VIDEO đổi theo';
-      bBg.addEventListener('input', () => { setBadgeColorAll('badgeBg', bBg.value); });
+      bBg.type = 'color'; bBg.value = badgeColorOf(c, 'badgeBg');
+      bBg.addEventListener('input', () => { setBadgeColor('badgeBg', bBg.value, c); });
       const bFg = document.createElement('input');
-      bFg.type = 'color'; bFg.value = c.badgeFg || WKE.badgeFg || '#FFF8DC';
-      bFg.title = 'Màu chữ badge — đổi ở đây thì CẢ 7 VIDEO đổi theo';
-      bFg.addEventListener('input', () => { setBadgeColorAll('badgeFg', bFg.value); });
+      bFg.type = 'color'; bFg.value = badgeColorOf(c, 'badgeFg');
+      bFg.addEventListener('input', () => { setBadgeColor('badgeFg', bFg.value, c); });
       const mk = (txt) => { const s = document.createElement('span'); s.style.cssText = "font-size:9.5px;color:#5a6070;font-family:'JetBrains Mono',monospace"; s.textContent = txt; return s; };
-      bRow.append(bTxt, mk('BG'), bBg, mk('TEXT'), bFg);
+      const bMode = document.createElement('button');
+      bMode.type = 'button';
+      bMode.className = 'pm-badge-mode';
+      bMode.style.cssText = "background:#1c2029;border:1px solid #2f3542;color:#9aa0ac;font-family:'JetBrains Mono',monospace;font-size:9.5px;padding:5px 8px;border-radius:6px;cursor:pointer;white-space:nowrap";
+      bMode.addEventListener('click', () => { toggleBadgeMode(c); });
+      bRow.append(bTxt, mk('BG'), bBg, mk('TEXT'), bFg, bMode);
+      paintBadgeModeBtn(bMode);
       badgeBox.appendChild(bRow);
 
       sub.append(imgBox, badgeBox);
@@ -13573,26 +13583,95 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
   function snapRS() { const o = {}; RS_KEYS.forEach(k => o[k] = RS[k]); return o; }
   // Đổi màu badge ở BẤT KỲ video nào → áp cho cả 7 video + lưu vào cài đặt tuần,
   // nên video thêm sau cũng ăn theo.
-  function setBadgeColorAll(key, value) {
-    WKE[key] = value;
-    PM.cards.forEach(c => { c[key] = value; });
-    envSave(); pmSaveDebounced();
-    // đồng bộ mọi ô chọn màu đang hiển thị (không vẽ lại cả danh sách card
-    // để không mất con trỏ / trạng thái gấp-mở của người dùng)
-    const host = $('pmCards');
-    if (host) {
-      const sel = key === 'badgeBg' ? 1 : 2;
-      host.querySelectorAll('.pm-badge-row').forEach(row => {
-        const inputs = row.querySelectorAll('input[type="color"]');
-        const el = inputs[sel - 1];
-        if (el && el.value !== value) el.value = value;
-      });
+  const badgeEach = () => WKE.badgeMode === 'each';
+  function badgeLblText() {
+    return badgeEach()
+      ? 'Header Badge · text VÀ màu riêng từng video'
+      : 'Header Badge · text riêng video này · MÀU dùng chung cả 7';
+  }
+  function badgeColorOf(c, key) {
+    const fallback = key === 'badgeBg' ? '#8B6F3F' : '#FFF8DC';
+    return badgeEach() ? (c[key] || WKE[key] || fallback) : (WKE[key] || c[key] || fallback);
+  }
+  function paintBadgeModeBtn(btn) {
+    if (!btn) return;
+    if (badgeEach()) {
+      btn.textContent = '🎨 RIÊNG';
+      btn.title = 'Mỗi video một màu badge riêng — bấm để quay lại dùng chung cả 7';
+      btn.style.borderColor = '#c8ff2e'; btn.style.color = '#c8ff2e';
+    } else {
+      btn.textContent = '🔗 CHUNG';
+      btn.title = 'Một màu badge dùng chung cả 7 video — bấm để đổi màu riêng từng video';
+      btn.style.borderColor = '#2f3542'; btn.style.color = '#9aa0ac';
     }
-    // ô màu trong editor 1 VIDEO thì KHÔNG đụng — 2 tab vẫn tách nhau
+  }
+  // vẽ lại preview + zoom sau khi đổi màu badge
+  function badgeRepaint() {
     schedulePreview();
     if (PM.zoomIdx >= 0 && $('weekZoom') && $('weekZoom').classList.contains('show') && !WK.playing) {
       wkStatic(PM.zoomIdx, $('weekZoomCanvas'), PHONE_W, PHONE_H);
     }
+  }
+  // cập nhật tại chỗ mọi hàng badge (không render lại danh sách card để người dùng
+  // không mất con trỏ / trạng thái gấp-mở)
+  function syncBadgeRows() {
+    const host = $('pmCards');
+    if (!host) return;
+    host.querySelectorAll('.pm-badge-lbl').forEach(l => { l.textContent = badgeLblText(); });
+    host.querySelectorAll('.pm-badge-mode').forEach(paintBadgeModeBtn);
+    host.querySelectorAll('.pm-badge-row').forEach((row, i) => {
+      const c = PM.cards[i];
+      if (!c) return;
+      const inputs = row.querySelectorAll('input[type="color"]');
+      const bg = badgeColorOf(c, 'badgeBg'), fg = badgeColorOf(c, 'badgeFg');
+      if (inputs[0] && inputs[0].value !== bg) inputs[0].value = bg;
+      if (inputs[1] && inputs[1].value !== fg) inputs[1].value = fg;
+    });
+  }
+
+  function setBadgeColor(key, value, card) {
+    if (badgeEach()) {
+      // chỉ đổi đúng video này, 6 video kia giữ nguyên
+      if (card) card[key] = value;
+      pmSaveDebounced();
+      badgeRepaint();
+      return;
+    }
+    setBadgeColorAll(key, value);
+  }
+
+  function setBadgeColorAll(key, value) {
+    WKE[key] = value;
+    PM.cards.forEach(c => { c[key] = value; });
+    envSave(); pmSaveDebounced();
+    syncBadgeRows();
+    // ô màu trong editor 1 VIDEO thì KHÔNG đụng — 2 tab vẫn tách nhau
+    badgeRepaint();
+  }
+
+  function toggleBadgeMode(card) {
+    if (badgeEach()) {
+      // RIÊNG → CHUNG: phải chọn 1 màu làm chuẩn, lấy màu của video đang bấm.
+      const bg = badgeColorOf(card, 'badgeBg'), fg = badgeColorOf(card, 'badgeFg');
+      const differ = PM.cards.some(c => (c.badgeBg || bg) !== bg || (c.badgeFg || fg) !== fg);
+      const idx = PM.cards.indexOf(card);
+      if (differ && !confirm(
+        'Chuyển về màu badge DÙNG CHUNG cả 7 video?\n\n' +
+        'Màu của VIDEO ' + (idx >= 0 ? idx + 1 : '?') + ' sẽ áp cho tất cả — màu riêng của các video khác sẽ mất.')) return;
+      WKE.badgeMode = 'all';
+      WKE.badgeBg = bg; WKE.badgeFg = fg;
+      PM.cards.forEach(c => { c.badgeBg = bg; c.badgeFg = fg; });
+    } else {
+      // CHUNG → RIÊNG: không đổi màu gì cả, chỉ tách ra để sửa độc lập.
+      WKE.badgeMode = 'each';
+      PM.cards.forEach(c => {
+        if (!c.badgeBg) c.badgeBg = WKE.badgeBg;
+        if (!c.badgeFg) c.badgeFg = WKE.badgeFg;
+      });
+    }
+    envSave(); pmSaveDebounced();
+    syncBadgeRows();
+    badgeRepaint();
   }
 
   function applyCardToRS(c) {
@@ -13606,9 +13685,15 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     RS.stepColor = c.stepColor || defStepColor();
     RS.showSteps = c.showSteps !== false;
     RS.brandBadge = c.badgeText || '';
-    // màu badge dùng chung cho cả tuần (text badge vẫn riêng từng video)
-    RS.badgeBg = WKE.badgeBg || c.badgeBg || '#8B6F3F';
-    RS.badgeFg = WKE.badgeFg || c.badgeFg || '#FFF8DC';
+    // Chế độ 'each' → lấy màu riêng của video; 'all' → lấy màu chung của tuần.
+    // (text badge thì luôn riêng từng video, không đổi.)
+    if (WKE.badgeMode === 'each') {
+      RS.badgeBg = c.badgeBg || WKE.badgeBg || '#8B6F3F';
+      RS.badgeFg = c.badgeFg || WKE.badgeFg || '#FFF8DC';
+    } else {
+      RS.badgeBg = WKE.badgeBg || c.badgeBg || '#8B6F3F';
+      RS.badgeFg = WKE.badgeFg || c.badgeFg || '#FFF8DC';
+    }
     RS.qImageEl = c.qImg || null;
     applyEnv();                 // cài đặt chung của tuần — tách hẳn khỏi editor 1 VIDEO
   }
@@ -13900,8 +13985,8 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     if (c.steps && c.steps.length && typeof rebuildSteps === 'function') rebuildSteps(c.steps);
     const bt = $('badgeText'), bb = $('badgeBgColor'), bf = $('badgeTextColor');
     if (bt) { bt.value = c.badgeText || ''; bt.dataset.userEdited = '1'; }
-    if (bb) bb.value = WKE.badgeBg || c.badgeBg || '#8B6F3F';
-    if (bf) bf.value = WKE.badgeFg || c.badgeFg || '#FFF8DC';
+    if (bb) bb.value = badgeColorOf(c, 'badgeBg');
+    if (bf) bf.value = badgeColorOf(c, 'badgeFg');
     const sc = $('stepColor'); if (sc) sc.value = c.stepColor || defStepColor();
     const ss = $('showStepsToggle'); if (ss) ss.checked = c.showSteps !== false;
     // voice riêng của video này
