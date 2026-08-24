@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_118 — Tab TUẦN: màu badge nay có 2 chế độ. Nút 🔗 CHUNG / 🎨 RIÊNG ngay cạnh 2 ô chọn màu: CHUNG = 1 màu cho cả 7 video (như cũ, mặc định), RIÊNG = mỗi video một màu badge riêng. Chế độ được nhớ lại, áp vào cả preview, zoom và export. Editor 1 VIDEO giữ nguyên bộ màu riêng. -->
+<!-- Manim Studio v38_18_3_120 — MỚI: (1) ô 🔎 CHỦ ĐỀ CÂU HỎI ở tab 1 VIDEO và 1 TUẦN (9:16), kèm ô NGÁCH riêng để Gemini ra đúng dạng đề của kỳ thi. Gõ chủ đề (vd math) hoặc nhiều chủ đề dạng [math][english] rồi bấm tìm — tự điền vào Question, chạy từ VIDEO 1 xuống, bỏ qua video đã có câu hỏi, mỗi video 1 chủ đề con không trùng; tick GHI ĐÈ để thay hết. (2) Tab 16:9 / NotebookLM: thêm dòng TEXT DƯỚI LOGO (cỡ + màu, nằm chung cụm nền với logo) và ô UPLOAD ẢNH PHỤ / LOGO 2 đặt tự do, kéo thả riêng, có trong file xuất. Không đụng opts/script/steps hay luồng cũ. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -796,6 +796,36 @@
   .gen-topic-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  /* ===== TÌM CHỦ ĐỀ CÂU HỎI → tự điền vào Question  [v38_18_3_119] ===== */
+  .qtopic-box {
+    border: 1px solid rgba(251,146,60,.35);
+    background: rgba(251,146,60,.06);
+    border-radius: 9px;
+    padding: 11px 12px;
+    margin: 10px 0 12px;
+  }
+  .qtopic-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 700; letter-spacing: 1px;
+    color: var(--topic); margin-bottom: 8px;
+  }
+  .qtopic-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .qtopic-row .input { flex: 1; min-width: 180px; margin: 0; }
+  .qtopic-tag {
+    flex: 0 0 auto; width: 62px;
+    font-family: 'JetBrains Mono', monospace; font-size: 9.5px; font-weight: 700;
+    letter-spacing: .6px; color: var(--text-faint); text-transform: uppercase;
+  }
+  .qtopic-btn { flex: 0 0 auto; white-space: nowrap; }
+  .qtopic-opt {
+    display: flex; align-items: center; gap: 6px; margin-top: 9px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--text-faint); cursor: pointer; user-select: none;
+  }
+  .qtopic-box code {
+    background: #0d0f14; padding: 1px 4px; border-radius: 3px; color: var(--topic);
   }
 
   /* Platform selector pills */
@@ -2083,6 +2113,28 @@
             <b>⚡ TÌM ĐÁP ÁN</b> ngay cạnh ô đó — Gemini giải, sinh 4 lựa chọn và tick sẵn đáp án đúng.
             Kịch bản vẫn gen thủ công bằng nút <b>✍️ GEN SCRIPT + STEPS FROM MY QUESTION</b> như cũ.
           </div>
+
+          <!-- TÌM CHỦ ĐỀ CÂU HỎI → tự điền vào Question Text [v38_18_3_119] -->
+          <div class="qtopic-box">
+            <div class="qtopic-head">🔎 CHỦ ĐỀ CÂU HỎI · TỰ ĐIỀN VÀO QUESTION TEXT</div>
+            <div class="qtopic-row" style="margin-bottom:8px">
+              <span class="qtopic-tag">Ngách</span>
+              <input class="input" id="pmNicheSingle" placeholder="vd: ASVAB · GED · CCNA · CDL truck driver · PTCE pharmacy tech…">
+            </div>
+            <div class="qtopic-row">
+              <span class="qtopic-tag">Chủ đề</span>
+              <input class="input" id="pmTopicSingle" placeholder="vd: math   ·   nhiều chủ đề: [math][english][science]">
+              <button type="button" class="gen-topic-btn qtopic-btn" id="pmTopicSingleBtn">🔍 TÌM CÂU HỎI</button>
+            </div>
+            <div class="pm-hint" style="margin:8px 0 0">
+              <b>Ngách</b> = kỳ thi / đối tượng — Gemini bám vào đây để ra đúng dạng đề, đúng độ khó của ngách đó
+              (bỏ trống thì lấy tạm Header Title + ô Ngách/Niche của 16:9).
+              Gõ chủ đề rồi bấm tìm (hoặc Enter) — sinh 1 câu hỏi trắc nghiệm và điền thẳng vào ô
+              <b>Question Text</b> bên dưới. Nhập nhiều chủ đề dạng <code>[math][english]</code>
+              thì mỗi lần bấm lấy ngẫu nhiên 1 chủ đề trong danh sách.
+            </div>
+            <div class="gen-status" id="pmTopicSingleStatus"></div>
+          </div>
         </div>
 
         <!-- ---------- TAB 2: 1 TUẦN · 7 VIDEO ---------- -->
@@ -2092,6 +2144,34 @@
             <b>+ THÊM VIDEO</b> để thêm (tối đa 7). Tick ô vuông để chọn video, rồi dùng các nút ở dưới cùng
             để gen cho <b>video đã chọn</b> hoặc cho <b>tất cả</b>. Preview bên phải hiện đủ các khung — bấm để phóng to.
           </div>
+
+          <!-- TÌM CHỦ ĐỀ CÂU HỎI → tự điền Question cho cả tuần [v38_18_3_119] -->
+          <div class="qtopic-box">
+            <div class="qtopic-head">🔎 CHỦ ĐỀ CÂU HỎI · TỰ ĐIỀN CHO CẢ TUẦN</div>
+            <div class="qtopic-row" style="margin-bottom:8px">
+              <span class="qtopic-tag">Ngách</span>
+              <input class="input" id="pmNicheWeek" placeholder="vd: ASVAB · GED · CCNA · CDL truck driver · PTCE pharmacy tech…">
+            </div>
+            <div class="qtopic-row">
+              <span class="qtopic-tag">Chủ đề</span>
+              <input class="input" id="pmTopicWeek" placeholder="vd: math   ·   nhiều chủ đề: [math][english][science]">
+              <button type="button" class="gen-topic-btn qtopic-btn" id="pmTopicWeekBtn">🔍 TÌM &amp; ĐIỀN</button>
+            </div>
+            <label class="qtopic-opt" title="Bỏ tick: chỉ điền vào video còn trống. Tick: thay câu hỏi của MỌI video.">
+              <input type="checkbox" id="pmTopicOverwrite"> GHI ĐÈ CẢ VIDEO ĐÃ CÓ CÂU HỎI
+            </label>
+            <div class="pm-hint" style="margin:8px 0 0">
+              <b>Ngách</b> = kỳ thi / đối tượng — Gemini bám vào đây để ra đúng dạng đề của ngách đó
+              (bỏ trống thì lấy tạm Header Title của tuần).
+              Điền lần lượt từ <b>VIDEO 1</b> xuống dưới và <b>bỏ qua video đã có câu hỏi</b>.
+              Mỗi video 1 câu, chủ đề con <b>không trùng nhau</b>.
+              Nhiều chủ đề thì bọc mỗi cái trong ngoặc vuông — <code>[math][english]</code> — tool chia lần lượt
+              cho từng video (video 1 math, video 2 english, video 3 math…). Xong bấm
+              <b>🔎 TÌM ĐÁP ÁN</b> ở dưới để sinh lựa chọn.
+            </div>
+            <div class="gen-status" id="pmTopicWeekStatus"></div>
+          </div>
+
           <!-- SHARED SETTINGS — áp cho cả 7 video -->
           <div class="pm-shared">
             <div class="pm-shared-head">⚙️ CÀI ĐẶT CHUNG · ÁP CHO CẢ 7 VIDEO</div>
@@ -2274,7 +2354,35 @@
             <label class="nlm-f"><span>Nền đậm (%)</span><input type="number" class="input" id="nlmLogoBgA" value="100" min="0" max="100" step="5"></label>
             <label class="nlm-f"><span>Nền rộng thêm (%)</span><input type="number" class="input" id="nlmLogoPad" value="12" min="0" max="200" step="2"></label>
           </div>
-          <div class="pm-hint" style="margin:0 0 4px">Nền và logo là <b>một cụm</b> — kéo trên khung xem trước là đi cả hai, kéo ô vuông xanh ở góc thì phóng to / thu nhỏ cả cụm.</div>
+
+          <!-- TEXT DƯỚI LOGO (16:9) [v38_18_3_120] -->
+          <div class="nlm-grid" id="nlmLogoSubBox">
+            <label class="nlm-f" style="grid-column:span 2">
+              <span>🅰️ Text dưới logo</span>
+              <input type="text" class="input" id="nlmLogoSub" placeholder="vd: Learn Smart, Pass Easy. — bỏ trống là không vẽ">
+            </label>
+            <label class="nlm-f"><span>Cỡ chữ (% ngang)</span><input type="number" class="input" id="nlmLogoSubSize" value="3" min="0.5" max="20" step="0.1"></label>
+            <label class="nlm-f"><span>Màu chữ</span><input type="color" class="input" id="nlmLogoSubColor" value="#111111" style="height:34px;padding:2px;cursor:pointer"></label>
+          </div>
+          <div class="pm-hint" style="margin:0 0 4px">
+            Nền + logo + dòng text là <b>một cụm</b> — kéo trên khung xem trước là đi cả ba,
+            kéo ô vuông xanh ở góc thì phóng to / thu nhỏ cả cụm. Text tự canh giữa dưới logo.
+          </div>
+
+          <!-- ẢNH PHỤ / LOGO 2 (16:9) [v38_18_3_120] -->
+          <label class="nlm-check"><input type="checkbox" id="nlmImg2On"> Chèn thêm 1 ảnh nữa (ảnh phụ / logo 2) — đặt tự do, tách khỏi cụm logo</label>
+          <div class="nlm-grid" id="nlmImg2Box">
+            <label class="nlm-f"><span>Ảnh phụ</span>
+              <button type="button" class="btn nlm-btn" id="nlmImg2Pick" style="width:100%">Upload ảnh</button>
+            </label>
+            <label class="nlm-f"><span>X (%)</span><input type="number" class="input" id="nlmImg2X" value="4" min="-30" max="120" step="0.5"></label>
+            <label class="nlm-f"><span>Y (%)</span><input type="number" class="input" id="nlmImg2Y" value="80" min="-30" max="120" step="0.5"></label>
+            <label class="nlm-f"><span>Rộng (%)</span><input type="number" class="input" id="nlmImg2W" value="14" min="2" max="60" step="0.5"></label>
+            <label class="nlm-f"><span>Bỏ ảnh</span>
+              <button type="button" class="btn nlm-btn" id="nlmImg2Clear" style="width:100%">✕ Xoá ảnh phụ</button>
+            </label>
+          </div>
+          <div class="pm-hint" style="margin:0 0 4px">Ảnh phụ có ô vuông kéo riêng trên khung xem trước — vẽ đè lên trên cùng, có luôn trong file xuất ra.</div>
 
           <div class="nlm-preview">
             <div id="nlmStage">
@@ -14337,6 +14445,242 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     }
   }
 
+  // ============================================================
+  // 🔎 TÌM CHỦ ĐỀ CÂU HỎI → TỰ ĐIỀN VÀO QUESTION   [v38_18_3_119]
+  //  · 1 chủ đề  "math"             → mọi video đều math, mỗi video 1 chủ đề con khác nhau
+  //  · nhiều CĐ  "[math][english]"  → chia lần lượt: video 1 math, video 2 english, video 3 math…
+  //  · chỉ điền vào video CHƯA có câu hỏi, tính từ VIDEO 1 (trừ khi tick GHI ĐÈ)
+  //  · không đụng tới opts / correct / script / steps — chỉ ghi vào .q
+  // ============================================================
+  const QT_KEY = 'manim_studio_qtopic_v1' + WSX;
+
+  function qtParseTopics(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return [];
+    const m = s.match(/\[([^\]]*)\]/g);
+    if (m && m.length) {
+      const list = m.map(x => x.slice(1, -1).trim()).filter(Boolean);
+      if (list.length) return list;
+    }
+    return [s];
+  }
+
+  function qtNorm(s) {
+    return String(s || '').toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  // Ngách lấy từ ô NGÁCH của chính hộp tìm chủ đề; bỏ trống thì lấy tạm
+  // Header Title (+ ô Ngách/Niche của tab 16:9) như trước.
+  function qtExamCtx(isWeek) {
+    const own = String(val(isWeek ? 'pmNicheWeek' : 'pmNicheSingle', '') || '').trim();
+    if (own) return own;
+    const brand = isWeek
+      ? (val('wkBrandTop', '') || (typeof WKE !== 'undefined' && WKE.brandTop) || '')
+      : val('brandTopText', '');
+    const niche = val('nicheDesc', '');
+    return [String(brand || '').trim(), String(niche || '').trim()].filter(Boolean).join(' · ');
+  }
+
+  function qtBuildPrompt(assign, avoid, exam) {
+    const slots = assign.map((t, i) => `${i + 1}. topic: ${t}`).join('\n');
+    return `You are an expert writer of multiple-choice exam questions for US certification / entrance tests (ASVAB, GED, SAT, CDL, CNA, PTCE, PMP, CCNA...).
+${exam ? `NICHE / EXAM: ${exam}
+Every question MUST be one that really shows up on THIS test for THIS audience — same phrasing style, same units, same difficulty, same scope. Never drift into a neighbouring exam or into general trivia.
+` : ''}
+Write exactly ${assign.length} multiple-choice QUESTION STEMS — one per slot below, keeping the slot order.
+
+SLOTS
+${slots}
+
+HARD RULES
+- Each question MUST belong to the topic written on its own slot${exam ? ', framed inside the niche above' : ''}.
+- Every slot must test a DIFFERENT sub-topic / skill. No two questions may test the same idea or be reworded twins of each other.
+- Output the QUESTION STEM ONLY. No answer choices, no "A) B) C) D)", no answer, no explanation.
+- Self-contained: every number / word / data the solver needs is inside the stem.
+- Short: one sentence when possible, max ~22 words. Natural US English.
+- Real exam difficulty for that test — not trivia, not trick questions.
+- Do NOT repeat, reword or paraphrase anything in this AVOID list:
+${avoid.length ? avoid.map(q => '- ' + q).join('\n') : '- (none)'}
+
+OUTPUT — STRICT JSON ONLY, no markdown fence:
+{"items":[{"slot":1,"topic":"...","subtopic":"...","question":"..."}]}`;
+  }
+
+  async function qtAskBatch(assign, avoid, exam, onStatus) {
+    const r = await pmAskGemini(qtBuildPrompt(assign, avoid, exam), 'gen_q_topic', onStatus);
+    let items = r.items || r.questions || r.list || [];
+    if (!Array.isArray(items)) items = [];
+    let out = items.map(it => (typeof it === 'string'
+      ? { question: it.trim(), topic: '', subtopic: '', slot: null }
+      : {
+          question: String((it && (it.question || it.stem || it.text)) || '').trim(),
+          topic: String((it && it.topic) || '').trim(),
+          subtopic: String((it && it.subtopic) || '').trim(),
+          slot: (it && typeof it.slot === 'number') ? it.slot : null
+        }));
+    if (out.length && out.every(o => typeof o.slot === 'number')) out.sort((a, b) => a.slot - b.slot);
+    out = out.filter(o => o.question);
+    // khử trùng: bỏ câu trùng với câu đã có và trùng lẫn nhau
+    const seen = new Set(avoid.map(qtNorm).filter(Boolean));
+    out = out.filter(o => {
+      const k = qtNorm(o.question);
+      if (!k || seen.has(k)) return false;
+      seen.add(k); return true;
+    });
+    return out;
+  }
+
+  // Gọi nhiều vòng nếu Gemini trả thiếu / trả trùng.
+  async function qtGenerate(assign, avoid, exam, onStatus) {
+    const got = [];
+    for (let round = 0; round < 3 && got.length < assign.length; round++) {
+      const remain = assign.slice(got.length);
+      if (round > 0 && onStatus) onStatus(`🤖 Còn thiếu ${remain.length} câu — hỏi lại Gemini…`);
+      let res = [];
+      try {
+        res = await qtAskBatch(remain, avoid.concat(got.map(g => g.question)), exam, onStatus);
+      } catch (e) {
+        if (!got.length) throw e;
+        break;
+      }
+      res.slice(0, remain.length).forEach(x => got.push(x));
+      if (!res.length) break;
+    }
+    if (!got.length) throw new Error('Gemini không sinh được câu hỏi nào — thử đổi chủ đề rõ hơn.');
+    return got;
+  }
+
+  function qtSaveInputs() {
+    try {
+      localStorage.setItem(QT_KEY, JSON.stringify({
+        single: val('pmTopicSingle', ''),
+        week: val('pmTopicWeek', ''),
+        nicheSingle: val('pmNicheSingle', ''),
+        nicheWeek: val('pmNicheWeek', ''),
+        ow: !!($('pmTopicOverwrite') && $('pmTopicOverwrite').checked)
+      }));
+    } catch (e) { /* quota */ }
+  }
+  (function qtRestore() {
+    let o = null;
+    try { o = JSON.parse(localStorage.getItem(QT_KEY) || 'null'); } catch (e) {}
+    if (!o) return;
+    if ($('pmTopicSingle') && o.single) $('pmTopicSingle').value = o.single;
+    if ($('pmTopicWeek') && o.week) $('pmTopicWeek').value = o.week;
+    if ($('pmNicheSingle') && o.nicheSingle) $('pmNicheSingle').value = o.nicheSingle;
+    if ($('pmNicheWeek') && o.nicheWeek) $('pmNicheWeek').value = o.nicheWeek;
+    if ($('pmTopicOverwrite')) $('pmTopicOverwrite').checked = !!o.ow;
+  })();
+  ['pmTopicSingle', 'pmTopicWeek', 'pmNicheSingle', 'pmNicheWeek', 'pmTopicOverwrite'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('change', qtSaveInputs);
+    if (el && el.tagName === 'INPUT' && el.type !== 'checkbox') el.addEventListener('input', qtSaveInputs);
+  });
+
+  // ---------- TAB 1 TUẦN · điền cho nhiều video ----------
+  const qtWeekBtn = $('pmTopicWeekBtn');
+  async function qtRunWeek() {
+    if (!qtWeekBtn || qtWeekBtn.disabled) return;
+    if (PM.busy) { alert('Đang chạy tác vụ khác — chờ xong đã.'); return; }
+    const topics = qtParseTopics(val('pmTopicWeek', ''));
+    if (!topics.length) { alert('Nhập chủ đề trước đã — vd: math hoặc [math][english]'); return; }
+
+    const ow = !!($('pmTopicOverwrite') && $('pmTopicOverwrite').checked);
+    const targets = [];
+    PM.cards.forEach((c, i) => {
+      if (ow || !String(c.q || '').trim()) targets.push(i);
+    });
+    if (!targets.length) {
+      alert('Mọi video đều đã có câu hỏi.\n\nTick “GHI ĐÈ CẢ VIDEO ĐÃ CÓ CÂU HỎI” nếu muốn thay hết bằng câu mới.');
+      return;
+    }
+
+    // video 1 → topic 1, video 2 → topic 2, hết chủ đề thì quay lại từ đầu
+    const assign = targets.map((_, k) => topics[k % topics.length]);
+    const avoid = PM.cards.map(c => String(c.q || '').trim()).filter(Boolean);
+    const exam = qtExamCtx(true);
+
+    const orig = qtWeekBtn.innerHTML;
+    qtWeekBtn.disabled = true;
+    qtWeekBtn.innerHTML = '<span class="spinner"></span> ĐANG TÌM…';
+    pmStatus('pmTopicWeekStatus',
+      `🤖 Gemini đang soạn ${targets.length} câu hỏi${exam ? ' [' + exam + ']' : ''} ` +
+      `(${topics.join(' · ')}) cho video ${targets.map(i => i + 1).join(', ')}…`, 'info');
+    try {
+      const got = await qtGenerate(assign, avoid, exam, (m) => pmStatus('pmTopicWeekStatus', m, 'info'));
+      let n = 0;
+      const filled = [];
+      targets.forEach((idx, k) => {
+        if (!got[k] || !got[k].question) return;
+        PM.cards[idx].q = got[k].question;
+        filled.push('V' + (idx + 1) + (got[k].subtopic ? ' (' + got[k].subtopic + ')' : ''));
+        n++;
+      });
+      renderCards(); renderWeekPreview(); pmSave();
+      pmStatus('pmTopicWeekStatus',
+        `✓ Đã điền ${n}/${targets.length} câu hỏi → ${filled.join(' · ')}` +
+        (n < targets.length ? ' · còn thiếu, bấm tìm lại để điền nốt.' : ' — giờ bấm 🔎 TÌM ĐÁP ÁN.'),
+        n < targets.length ? 'info' : 'ok');
+    } catch (e) {
+      console.error(e);
+      pmStatus('pmTopicWeekStatus', '✗ ' + e.message, 'err');
+    } finally {
+      qtWeekBtn.disabled = false;
+      qtWeekBtn.innerHTML = orig;
+    }
+  }
+  if (qtWeekBtn) qtWeekBtn.addEventListener('click', qtRunWeek);
+  ['pmTopicWeek', 'pmNicheWeek'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); qtRunWeek(); }
+    });
+  });
+
+  // ---------- TAB 1 VIDEO · điền vào ô Question Text ----------
+  const qtSingleBtn = $('pmTopicSingleBtn');
+  async function qtRunSingle() {
+    if (!qtSingleBtn || qtSingleBtn.disabled) return;
+    const topics = qtParseTopics(val('pmTopicSingle', ''));
+    if (!topics.length) { alert('Nhập chủ đề trước đã — vd: math hoặc [math][english]'); return; }
+    const qEl = $('qText');
+    if (!qEl) return;
+    const cur = String(qEl.value || '').trim();
+    if (cur && !confirm('Ô Question Text đang có câu hỏi:\n\n' + cur + '\n\nThay bằng câu hỏi mới?')) return;
+
+    const topic = topics[Math.floor(Math.random() * topics.length)];
+    const exam = qtExamCtx(false);
+    const orig = qtSingleBtn.innerHTML;
+    qtSingleBtn.disabled = true;
+    qtSingleBtn.innerHTML = '<span class="spinner"></span> ĐANG TÌM…';
+    pmStatus('pmTopicSingleStatus',
+      `🤖 Gemini đang soạn 1 câu hỏi${exam ? ' [' + exam + ']' : ''} chủ đề "${topic}"…`, 'info');
+    try {
+      const got = await qtGenerate([topic], cur ? [cur] : [], exam,
+        (m) => pmStatus('pmTopicSingleStatus', m, 'info'));
+      qEl.value = got[0].question;
+      if (typeof syncEditor === 'function') syncEditor();
+      if (typeof scheduleSaveState === 'function') scheduleSaveState();
+      if (typeof renderActiveCanvas === 'function') renderActiveCanvas(0);
+      pmStatus('pmTopicSingleStatus',
+        `✓ Đã điền câu hỏi (${got[0].subtopic || topic}) — giờ bấm ⚡ TÌM ĐÁP ÁN ở ô Question Text.`, 'ok');
+    } catch (e) {
+      console.error(e);
+      pmStatus('pmTopicSingleStatus', '✗ ' + e.message, 'err');
+    } finally {
+      qtSingleBtn.disabled = false;
+      qtSingleBtn.innerHTML = orig;
+    }
+  }
+  if (qtSingleBtn) qtSingleBtn.addEventListener('click', qtRunSingle);
+  ['pmTopicSingle', 'pmNicheSingle'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); qtRunSingle(); }
+    });
+  });
+
   // ---------- wiring ----------
   const addBtn = $('pmAddCard');
   if (addBtn) addBtn.addEventListener('click', () => {
@@ -14839,7 +15183,7 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
 
   const NLM = {
     dir: null, watching: false, timer: null, since: 0, seen: new Set(),
-    file: null, url: null, logoImg: null, busy: false, rec: null
+    file: null, url: null, logoImg: null, img2: null, busy: false, rec: null
   };
 
   // ---------- IndexedDB: nhớ handle thư mục qua các lần mở app ----------
@@ -15062,16 +15406,31 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       ctx.fillStyle = fill;
       ctx.fillRect(x, y, w, h);
     }
-    const box = logoRect(W, H);
-    if (box) {
+    // cụm: nền → logo → dòng text dưới logo
+    const cr = contentRect(W, H);
+    if (cr) {
       const a = num('nlmLogoBgA', 0) / 100;
       if (a > 0) {
-        const pad = num('nlmLogoPad', 12) / 100 * box.w;
-        ctx.fillStyle = hexA($('nlmLogoBg').value || '#7ED9C8', a);
-        ctx.fillRect(box.x - pad, box.y - pad, box.w + pad * 2, box.h + pad * 2);
+        const g = groupRect(W, H);
+        if (g) {
+          ctx.fillStyle = hexA(($('nlmLogoBg') && $('nlmLogoBg').value) || '#7ED9C8', a);
+          ctx.fillRect(g.x, g.y, g.w, g.h);
+        }
       }
-      try { ctx.drawImage(box.img, box.x, box.y, box.w, box.h); } catch (e) {}
+      if (cr.box) { try { ctx.drawImage(cr.box.img, cr.box.x, cr.box.y, cr.box.w, cr.box.h); } catch (e) {} }
+      if (cr.sub) {
+        ctx.save();
+        ctx.font = cr.sub.font;
+        ctx.fillStyle = cr.sub.color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(cr.sub.text, cr.subCx, cr.subTop);
+        ctx.restore();
+      }
     }
+    // ảnh phụ / logo 2 — vẽ trên cùng, vị trí độc lập
+    const i2 = img2Rect(W, H);
+    if (i2) { try { ctx.drawImage(i2.img, i2.x, i2.y, i2.w, i2.h); } catch (e) {} }
   }
 
   function hexA(hex, a) {
@@ -15098,50 +15457,99 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
   }
 
   ['nlmCover', 'nlmCovX', 'nlmCovY', 'nlmCovW', 'nlmCovH', 'nlmCovColor', 'nlmCovMode',
-   'nlmLogoOn', 'nlmLogoX', 'nlmLogoY', 'nlmLogoW', 'nlmLogoBg', 'nlmLogoBgA', 'nlmLogoPad'].forEach(id => {
+   'nlmLogoOn', 'nlmLogoX', 'nlmLogoY', 'nlmLogoW', 'nlmLogoBg', 'nlmLogoBgA', 'nlmLogoPad',
+   'nlmLogoSub', 'nlmLogoSubSize', 'nlmLogoSubColor',
+   'nlmImg2On', 'nlmImg2X', 'nlmImg2Y', 'nlmImg2W'].forEach(id => {
     const e = $(id);
     if (!e) return;
     e.addEventListener('input', () => { paintPreview(); syncLayer(); });
     e.addEventListener('change', () => { paintPreview(); syncLayer(); });
   });
 
-  // ---------- kéo / co giãn logo ngay trên khung xem trước ----------
-  // hộp của CẢ CỤM (nền + logo) — nền suy ra từ vị trí/cỡ logo nên
-  // kéo hay co giãn cụm chỉ cần đổi X/Y/Rộng của logo.
-  function groupRect(W, H) {
-    const box = logoRect(W, H);
-    if (!box) return null;
-    const a = num('nlmLogoBgA', 0) / 100;
-    if (a <= 0) return { x: box.x, y: box.y, w: box.w, h: box.h };
-    const pad = num('nlmLogoPad', 12) / 100 * box.w;
-    return { x: box.x - pad, y: box.y - pad, w: box.w + pad * 2, h: box.h + pad * 2 };
+  // ---------- dòng text dưới logo (16:9) [v38_18_3_120] ----------
+  function subInfo(W) {
+    const el = $('nlmLogoSub');
+    const t = el ? String(el.value || '').trim() : '';
+    if (!t) return null;
+    const size = Math.max(5, num('nlmLogoSubSize', 3) / 100 * W);
+    return {
+      text: t, size,
+      color: ($('nlmLogoSubColor') && $('nlmLogoSubColor').value) || '#111111',
+      font: `800 ${size}px "Inter Tight", "Poppins", sans-serif`
+    };
+  }
+  let _measCv = null;
+  function subWidth(info) {
+    if (!info) return 0;
+    if (!_measCv) _measCv = document.createElement('canvas');
+    const c = _measCv.getContext('2d');
+    if (!c) return info.text.length * info.size * 0.52;
+    c.font = info.font;
+    return c.measureText(info.text).width;
   }
 
-  function syncLayer() {
-    const layer = $('nlmLayer'), cv = $('nlmCanvas');
-    if (!layer || !cv) return;
-    layer.innerHTML = '';
-    if (NLM.busy || !NLM.file) return;
-    const g = groupRect(cv.width, cv.height);
-    if (!g) return;
-    const r = cv.getBoundingClientRect();
-    if (!r.width) return;
-    const sx = r.width / cv.width, sy = r.height / cv.height;
+  // logo + dòng text (chưa cộng nền). Không có logo thì text neo theo X/Y của logo.
+  function contentRect(W, H) {
+    const box = logoRect(W, H);
+    const sub = subInfo(W);
+    if (!box && !sub) return null;
+    if (!sub) return { box, sub: null, x: box.x, y: box.y, w: box.w, h: box.h };
+    const sw = subWidth(sub), sh = sub.size * 1.2;
+    if (!box) {
+      const x = num('nlmLogoX', 78) / 100 * W, y = num('nlmLogoY', 86) / 100 * H;
+      return { box: null, sub, x, y, w: sw, h: sh, subCx: x + sw / 2, subTop: y };
+    }
+    const gap = sub.size * 0.5;
+    const cx = box.x + box.w / 2;
+    const w = Math.max(box.w, sw);
+    return {
+      box, sub, x: cx - w / 2, y: box.y, w, h: box.h + gap + sh,
+      subCx: cx, subTop: box.y + box.h + gap
+    };
+  }
+
+  // ảnh phụ / logo 2 — hộp riêng, không dính cụm logo
+  function img2Rect(W, H) {
+    const on = $('nlmImg2On');
+    if (!on || !on.checked) return null;
+    const img = NLM.img2;
+    if (!img) return null;
+    const w = num('nlmImg2W', 14) / 100 * W;
+    const ratio = (img.naturalHeight || img.height || 1) / (img.naturalWidth || img.width || 1);
+    return { img, x: num('nlmImg2X', 4) / 100 * W, y: num('nlmImg2Y', 80) / 100 * H, w, h: w * ratio };
+  }
+
+  // ---------- kéo / co giãn logo ngay trên khung xem trước ----------
+  // hộp của CẢ CỤM (nền + logo + text) — nền suy ra từ vị trí/cỡ logo nên
+  // kéo hay co giãn cụm chỉ cần đổi X/Y/Rộng của logo.
+  function groupRect(W, H) {
+    const cr = contentRect(W, H);
+    if (!cr) return null;
+    const a = num('nlmLogoBgA', 0) / 100;
+    if (a <= 0) return { x: cr.x, y: cr.y, w: cr.w, h: cr.h };
+    // không có logo thì lấy cỡ chữ làm chuẩn, đừng lấy bề ngang dòng text
+    const base = cr.box ? cr.box.w : (cr.sub ? cr.sub.size * 2 : cr.w);
+    const pad = num('nlmLogoPad', 12) / 100 * base;
+    return { x: cr.x - pad, y: cr.y - pad, w: cr.w + pad * 2, h: cr.h + pad * 2 };
+  }
+
+  // 1 ô kéo + 1 tay nắm co giãn, gắn vào bộ 3 ô X / Y / Rộng bất kỳ
+  function mkDragBox(layer, g, sx, sy, cv, r, ids, titles) {
     const L = g.x * sx, T = g.y * sy, Wd = g.w * sx, Hd = g.h * sy;
 
     const b = document.createElement('div');
     b.className = 'nlm-box';
     b.style.cssText = `left:${L}px;top:${T}px;width:${Wd}px;height:${Hd}px`;
-    b.title = 'Kéo để đổi vị trí cả cụm nền + logo';
+    b.title = titles[0];
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       const x0 = e.clientX, y0 = e.clientY;
-      const lx0 = num('nlmLogoX', 78), ly0 = num('nlmLogoY', 86);
+      const lx0 = num(ids.x, 0), ly0 = num(ids.y, 0);
       const move = (ev) => {
         const dx = (ev.clientX - x0) / sx / cv.width * 100;
         const dy = (ev.clientY - y0) / sy / cv.height * 100;
-        $('nlmLogoX').value = Math.round(Math.max(-30, Math.min(120, lx0 + dx)) * 10) / 10;
-        $('nlmLogoY').value = Math.round(Math.max(-30, Math.min(120, ly0 + dy)) * 10) / 10;
+        $(ids.x).value = Math.round(Math.max(-30, Math.min(120, lx0 + dx)) * 10) / 10;
+        $(ids.y).value = Math.round(Math.max(-30, Math.min(120, ly0 + dy)) * 10) / 10;
         paintPreview(); syncLayer();
       };
       const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
@@ -15153,15 +15561,15 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     const hd = document.createElement('div');
     hd.className = 'nlm-handle';
     hd.style.cssText = `left:${L + Wd - 7}px;top:${T + Hd - 7}px`;
-    hd.title = 'Kéo để phóng to / thu nhỏ cả cụm';
+    hd.title = titles[1];
     hd.addEventListener('pointerdown', (e) => {
       e.preventDefault(); e.stopPropagation();
-      const startW = num('nlmLogoW', 16);
+      const startW = num(ids.w, 16);
       const anchorX = r.left + g.x * sx;              // giữ nguyên góc trên-trái của cụm
       const d0 = Math.max(8, e.clientX - anchorX);
       const move = (ev) => {
         const d = Math.max(6, ev.clientX - anchorX);
-        $('nlmLogoW').value = Math.round(Math.max(2, Math.min(60, startW * d / d0)) * 10) / 10;
+        $(ids.w).value = Math.round(Math.max(2, Math.min(60, startW * d / d0)) * 10) / 10;
         paintPreview(); syncLayer();
       };
       const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
@@ -15169,6 +15577,26 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       window.addEventListener('pointerup', up);
     });
     layer.appendChild(hd);
+  }
+
+  function syncLayer() {
+    const layer = $('nlmLayer'), cv = $('nlmCanvas');
+    if (!layer || !cv) return;
+    layer.innerHTML = '';
+    if (NLM.busy || !NLM.file) return;
+    const r = cv.getBoundingClientRect();
+    if (!r.width) return;
+    const sx = r.width / cv.width, sy = r.height / cv.height;
+
+    const g = groupRect(cv.width, cv.height);
+    if (g) mkDragBox(layer, g, sx, sy, cv, r,
+      { x: 'nlmLogoX', y: 'nlmLogoY', w: 'nlmLogoW' },
+      ['Kéo để đổi vị trí cả cụm nền + logo + text', 'Kéo để phóng to / thu nhỏ cả cụm']);
+
+    const g2 = img2Rect(cv.width, cv.height);
+    if (g2) mkDragBox(layer, g2, sx, sy, cv, r,
+      { x: 'nlmImg2X', y: 'nlmImg2Y', w: 'nlmImg2W' },
+      ['Kéo để đổi vị trí ảnh phụ', 'Kéo để phóng to / thu nhỏ ảnh phụ']);
   }
   window.addEventListener('resize', syncLayer);
 
@@ -15194,10 +15622,41 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     const fr = new FileReader();
     fr.onload = () => {
       const im = new Image();
-      im.onload = () => { NLM.logoImg = im; logoPick.textContent = '✓ ' + f.name.slice(0, 16); paintPreview(); };
+      im.onload = () => { NLM.logoImg = im; logoPick.textContent = '✓ ' + f.name.slice(0, 16); paintPreview(); syncLayer(); };
       im.src = String(fr.result);
     };
     fr.readAsDataURL(f);
+  });
+
+  // ---------- ảnh phụ / logo 2 (16:9) [v38_18_3_120] ----------
+  const img2File = document.createElement('input');
+  img2File.type = 'file'; img2File.accept = 'image/*'; img2File.style.display = 'none';
+  document.body.appendChild(img2File);
+  const img2Pick = $('nlmImg2Pick');
+  if (img2Pick) img2Pick.addEventListener('click', () => img2File.click());
+  img2File.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    img2File.value = '';
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      const im = new Image();
+      im.onload = () => {
+        NLM.img2 = im;
+        if (img2Pick) img2Pick.textContent = '✓ ' + f.name.slice(0, 16);
+        const on = $('nlmImg2On'); if (on) on.checked = true;   // upload xong là bật luôn
+        paintPreview(); syncLayer();
+      };
+      im.src = String(fr.result);
+    };
+    fr.readAsDataURL(f);
+  });
+  const img2Clear = $('nlmImg2Clear');
+  if (img2Clear) img2Clear.addEventListener('click', () => {
+    NLM.img2 = null;
+    if (img2Pick) img2Pick.textContent = 'Upload ảnh';
+    const on = $('nlmImg2On'); if (on) on.checked = false;
+    paintPreview(); syncLayer();
   });
 
   const resetBtn = $('nlmReset');
