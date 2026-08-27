@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_120 — MỚI: (1) ô 🔎 CHỦ ĐỀ CÂU HỎI ở tab 1 VIDEO và 1 TUẦN (9:16), kèm ô NGÁCH riêng để Gemini ra đúng dạng đề của kỳ thi. Gõ chủ đề (vd math) hoặc nhiều chủ đề dạng [math][english] rồi bấm tìm — tự điền vào Question, chạy từ VIDEO 1 xuống, bỏ qua video đã có câu hỏi, mỗi video 1 chủ đề con không trùng; tick GHI ĐÈ để thay hết. (2) Tab 16:9 / NotebookLM: thêm dòng TEXT DƯỚI LOGO (cỡ + màu, nằm chung cụm nền với logo) và ô UPLOAD ẢNH PHỤ / LOGO 2 đặt tự do, kéo thả riêng, có trong file xuất. Không đụng opts/script/steps hay luồng cũ. -->
+<!-- Manim Studio v38_18_3_121 — MỚI: (1) ô 🔎 CHỦ ĐỀ CÂU HỎI ở tab 1 VIDEO và 1 TUẦN (9:16), kèm ô NGÁCH riêng để Gemini ra đúng dạng đề của kỳ thi. Gõ [math][english] → tự điền Question từ VIDEO 1 xuống, bỏ qua video đã có câu hỏi, mỗi video 1 chủ đề con không trùng, và HEADER BADGE của video đó tự đổi thành đúng tên chủ đề (không bao giờ lệch với câu hỏi); tick GHI ĐÈ để thay hết. (2) Tab 16:9 / NotebookLM: thêm dòng TEXT DƯỚI LOGO (cỡ + màu, chung cụm nền với logo) và ô UPLOAD ẢNH PHỤ / LOGO 2 đặt tự do, kéo thả riêng, có trong file xuất. Không đụng opts/script/steps hay luồng cũ. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2129,9 +2129,10 @@
             <div class="pm-hint" style="margin:8px 0 0">
               <b>Ngách</b> = kỳ thi / đối tượng — Gemini bám vào đây để ra đúng dạng đề, đúng độ khó của ngách đó
               (bỏ trống thì lấy tạm Header Title + ô Ngách/Niche của 16:9).
-              Gõ chủ đề rồi bấm tìm (hoặc Enter) — sinh 1 câu hỏi trắc nghiệm và điền thẳng vào ô
-              <b>Question Text</b> bên dưới. Nhập nhiều chủ đề dạng <code>[math][english]</code>
-              thì mỗi lần bấm lấy ngẫu nhiên 1 chủ đề trong danh sách.
+              Gõ chủ đề rồi bấm tìm (hoặc Enter) — sinh 1 câu hỏi trắc nghiệm, điền thẳng vào ô
+              <b>Question Text</b> bên dưới và đổi luôn <b>Header Badge</b> thành đúng tên chủ đề đó.
+              Nhập nhiều chủ đề dạng <code>[math][english]</code> thì mỗi lần bấm lấy ngẫu nhiên 1 chủ đề
+              trong danh sách.
             </div>
             <div class="gen-status" id="pmTopicSingleStatus"></div>
           </div>
@@ -2164,9 +2165,11 @@
               <b>Ngách</b> = kỳ thi / đối tượng — Gemini bám vào đây để ra đúng dạng đề của ngách đó
               (bỏ trống thì lấy tạm Header Title của tuần).
               Điền lần lượt từ <b>VIDEO 1</b> xuống dưới và <b>bỏ qua video đã có câu hỏi</b>.
-              Mỗi video 1 câu, chủ đề con <b>không trùng nhau</b>.
+              Mỗi video 1 câu, chủ đề con <b>không trùng nhau</b>, và <b>Header Badge của video đó tự đổi
+              thành đúng tên chủ đề</b> — câu hỏi math thì badge "Math", không bao giờ lệch.
               Nhiều chủ đề thì bọc mỗi cái trong ngoặc vuông — <code>[math][english]</code> — tool chia lần lượt
-              cho từng video (video 1 math, video 2 english, video 3 math…). Xong bấm
+              cho từng video (video 1 math, video 2 english, video 3 math…). Muốn badge ghi đúng chữ nào thì
+              gõ thẳng chữ đó làm chủ đề: <code>[Mathematics (No calculator)][English]</code>. Xong bấm
               <b>🔎 TÌM ĐÁP ÁN</b> ở dưới để sinh lựa chọn.
             </div>
             <div class="gen-status" id="pmTopicWeekStatus"></div>
@@ -14470,6 +14473,15 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       .replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
   }
 
+  // Header Badge = ĐÚNG tên chủ đề đã gõ, không tự chế thêm chữ → không bao giờ lệch
+  // với câu hỏi của video đó. Gõ sẵn chữ hoa thì giữ nguyên (vd "Mathematics (No calculator)").
+  function qtBadge(topic) {
+    const t = String(topic || '').trim().replace(/\s+/g, ' ');
+    if (!t) return '';
+    if (/[A-Z]/.test(t)) return t;
+    return t.split(' ').map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ');
+  }
+
   // Ngách lấy từ ô NGÁCH của chính hộp tìm chủ đề; bỏ trống thì lấy tạm
   // Header Title (+ ô Ngách/Niche của tab 16:9) như trước.
   function qtExamCtx(isWeek) {
@@ -14614,12 +14626,15 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       targets.forEach((idx, k) => {
         if (!got[k] || !got[k].question) return;
         PM.cards[idx].q = got[k].question;
-        filled.push('V' + (idx + 1) + (got[k].subtopic ? ' (' + got[k].subtopic + ')' : ''));
+        // Header Badge của chính video đó chạy theo chủ đề đã gán cho slot này
+        const bd = qtBadge(assign[k]);
+        if (bd) PM.cards[idx].badgeText = bd;
+        filled.push('V' + (idx + 1) + ' → ' + (bd || '—'));
         n++;
       });
       renderCards(); renderWeekPreview(); pmSave();
       pmStatus('pmTopicWeekStatus',
-        `✓ Đã điền ${n}/${targets.length} câu hỏi → ${filled.join(' · ')}` +
+        `✓ Đã điền ${n}/${targets.length} câu hỏi + badge → ${filled.join(' · ')}` +
         (n < targets.length ? ' · còn thiếu, bấm tìm lại để điền nốt.' : ' — giờ bấm 🔎 TÌM ĐÁP ÁN.'),
         n < targets.length ? 'info' : 'ok');
     } catch (e) {
@@ -14660,11 +14675,18 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       const got = await qtGenerate([topic], cur ? [cur] : [], exam,
         (m) => pmStatus('pmTopicSingleStatus', m, 'info'));
       qEl.value = got[0].question;
+      // Header Badge chạy theo đúng chủ đề vừa tìm
+      const bd = qtBadge(topic);
+      const bdEl = $('badgeText');
+      if (bd && bdEl) {
+        bdEl.value = bd;
+        bdEl.dataset.userEdited = '1';   // khoá lại, đừng để auto-brand ghi đè
+      }
       if (typeof syncEditor === 'function') syncEditor();
       if (typeof scheduleSaveState === 'function') scheduleSaveState();
       if (typeof renderActiveCanvas === 'function') renderActiveCanvas(0);
       pmStatus('pmTopicSingleStatus',
-        `✓ Đã điền câu hỏi (${got[0].subtopic || topic}) — giờ bấm ⚡ TÌM ĐÁP ÁN ở ô Question Text.`, 'ok');
+        `✓ Đã điền câu hỏi + badge "${bd || '—'}" — giờ bấm ⚡ TÌM ĐÁP ÁN ở ô Question Text.`, 'ok');
     } catch (e) {
       console.error(e);
       pmStatus('pmTopicSingleStatus', '✗ ' + e.message, 'err');
