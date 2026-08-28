@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_123 — MỚI: nền watermark "Easy Prep" nhúng sẵn trong file, thành NỀN MẶC ĐỊNH của 9:16 (cả tab 1 VIDEO lẫn 1 TUẦN). Thêm preset 💧 Easy Prep watermark + pattern "watermark"; chọn nền khác trong ô Background là nhớ luôn. 16:9 vẫn giữ dot grid. — Trước đó: ngách (activeNiche) dùng chung cho prompt tìm câu hỏi / tìm đáp án / gen kịch bản + EXAM LOCK cấm nhắc kỳ thi khác; ô CHỦ ĐỀ CÂU HỎI tự điền Question và HEADER BADGE theo đúng chủ đề từng video; tab 16:9 có TEXT DƯỚI LOGO và ẢNH PHỤ / LOGO 2 kéo thả riêng. -->
+<!-- Manim Studio v38_18_3_124 — SỬA LỖI TRẮNG MÀN HÌNH / ĐỨNG MÁY KHI RENDER CẢ TUẦN (tab bị Chrome kill vì hết RAM). (1) Render xong video nào GHI THẲNG ra thư mục đã chọn rồi buông blob — RAM chỉ giữ 1 video tại một thời điểm thay vì cả 7 (~550MB). Trình duyệt không hỗ trợ hoặc bấm huỷ thì chạy như cũ. (2) Thêm phanh encodeQueueSize cho VideoEncoder/AudioEncoder — hết cảnh hàng trăm frame 1080x1920 dồn trong hàng đợi GPU. (3) Đóng encoder + thả ArrayBuffer + thu nhỏ canvas ngay sau khi dựng file. (4) Thêm ô CHẤT LƯỢNG (8/5/3 Mbps, mặc định 5) ở thanh tuần. — Trước đó: nền watermark Easy Prep mặc định cho 9:16; activeNiche dùng chung cho mọi prompt + EXAM LOCK; ô CHỦ ĐỀ CÂU HỎI tự điền Question + Header Badge; 16:9 có TEXT DƯỚI LOGO và ẢNH PHỤ / LOGO 2. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2269,7 +2269,15 @@
                 <input type="checkbox" id="pmSelAll" checked> CHỌN TẤT CẢ
               </label>
               <span id="pmSelCount" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--topic)"></span>
-              <label style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-faint);margin-left:auto;cursor:pointer" title="Bỏ tick = chỉ chạy cho các video đang tick">
+              <label style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-faint);margin-left:auto;cursor:pointer" title="Bitrate khi xuất MP4. Càng cao thì file càng nặng và càng tốn RAM lúc render.">
+                CHẤT LƯỢNG
+                <select id="pmBitrate" class="input" style="width:auto;min-width:106px;padding:3px 6px;font-size:10px;cursor:pointer">
+                  <option value="8000000">Cao · 8 Mbps</option>
+                  <option value="5000000" selected>Vừa · 5 Mbps</option>
+                  <option value="3000000">Nhẹ · 3 Mbps</option>
+                </select>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-faint);cursor:pointer" title="Bỏ tick = chỉ chạy cho các video đang tick">
                 <input type="checkbox" id="pmRunAll"> CHẠY CHO TẤT CẢ (bỏ qua tick)
               </label>
             </div>
@@ -9146,6 +9154,14 @@ async function recordVideoMp4() {
   }
 }
 
+// Bitrate xuất MP4 — lấy từ ô CHẤT LƯỢNG ở tab 1 TUẦN, mặc định 5 Mbps.
+// Bitrate cao = file nặng = RAM lúc render cũng nặng theo.  [v38_18_3_124]
+function getExportBitrate() {
+  const el = document.getElementById('pmBitrate');
+  const v = el ? parseInt(el.value, 10) : NaN;
+  return (Number.isFinite(v) && v >= 1_000_000 && v <= 20_000_000) ? v : 5_000_000;
+}
+
 async function exportMp4WebCodecs(btn) {
   // Dimensions follow the active video mode
   const W = videoMode === '16x9' ? 1920 : 1080;
@@ -9173,7 +9189,7 @@ async function exportMp4WebCodecs(btn) {
     error: e => { throw e; }
   });
   videoEncoder.configure({
-    codec: 'avc1.640033', width: W, height: H, bitrate: 8_000_000, framerate: FPS
+    codec: 'avc1.640033', width: W, height: H, bitrate: getExportBitrate(), framerate: FPS
   });
 
   // Audio encoder
@@ -9190,6 +9206,18 @@ async function exportMp4WebCodecs(btn) {
 
   // ----- Video frames -----
   // We use the same renderFrame function (no DOM, pure canvas drawing) — works for export
+  //
+  // ⭐ PHANH HÀNG ĐỢI  [v38_18_3_124]
+  // Mỗi VideoFrame 1080×1920 chiếm ~3MB trong bộ nhớ GPU/renderer. Nếu JS vẽ
+  // nhanh hơn tốc độ mã hoá (laptop chạy pin, GPU hạ xung) thì frame dồn trong
+  // hàng đợi của VideoEncoder → phình cả GB → Chrome kill tab (màn hình trắng).
+  // Nên: bơm tới ngưỡng thì dừng lại đợi encoder tiêu hoá bớt rồi mới bơm tiếp.
+  const QUEUE_HI = 8, QUEUE_LO = 3;
+  const drainVideo = async () => {
+    while (videoEncoder.encodeQueueSize > QUEUE_LO) {
+      await new Promise(r => setTimeout(r, 0));
+    }
+  };
   const prevRevealed = answerRevealed;
   for (let f = 0; f < totalFrames; f++) {
     const t = f / FPS;
@@ -9203,12 +9231,15 @@ async function exportMp4WebCodecs(btn) {
     videoEncoder.encode(frame, { keyFrame: (f % FPS === 0) });
     frame.close();
 
+    if (videoEncoder.encodeQueueSize > QUEUE_HI) await drainVideo();
+
     if (f % 15 === 0) {
       const pct = Math.floor((f / totalFrames) * 100);
       btn.innerHTML = `⏺ ${pct}%`;
       await new Promise(r => setTimeout(r, 0));
     }
   }
+  await drainVideo();
   answerRevealed = prevRevealed;
 
   // ----- Audio frames -----
@@ -9236,13 +9267,21 @@ async function exportMp4WebCodecs(btn) {
     });
     audioEncoder.encode(ad);
     ad.close();
+    while (audioEncoder.encodeQueueSize > 8) await new Promise(r => setTimeout(r, 0));
   }
 
   await videoEncoder.flush();
   await audioEncoder.flush();
   muxer.finalize();
 
-  const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+  // Đóng encoder ngay: giải phóng bộ đệm phía GPU trước khi dựng file.
+  try { videoEncoder.close(); } catch (e) {}
+  try { audioEncoder.close(); } catch (e) {}
+
+  const buf = muxer.target.buffer;
+  const blob = new Blob([buf], { type: 'video/mp4' });
+  try { muxer.target.buffer = null; } catch (e) {}   // bỏ bản ArrayBuffer, chỉ giữ Blob
+  canvas.width = canvas.height = 1;                  // trả lại backing store 1080×1920
   // ⭐ NEW SAVE FLOW: keep the blob in memory instead of auto-downloading.
   // The Save modal (opened by recordVideoMp4) lets the user pick what happens next.
   savedVideoBlob = blob;
@@ -9279,7 +9318,7 @@ async function exportMp4MediaRecorder(btn) {
   const mime = mimeCandidates.find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
   const ext = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
 
-  const rec = new MediaRecorder(combined, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
+  const rec = new MediaRecorder(combined, { mimeType: mime, videoBitsPerSecond: getExportBitrate() });
   const chunks = [];
   rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
   const done = new Promise(resolve => {
@@ -14374,10 +14413,53 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
   // 💾 SAVE — render MP4 cho TẤT CẢ video của tuần, rồi tải / up Drive
   // ============================================================
   const PM_OUT = [];
+  let PM_DIR = null;          // FileSystemDirectoryHandle khi ghi thẳng ra ổ đĩa
+  let PM_DIR_NAME = '';
 
   function pmFileName(i) {
     const base = (savedVideoFilename || 'manim.mp4').replace(/\.mp4$/i, '');
     return `v${i + 1}_${base}.mp4`;
+  }
+
+  // Lấy blob của 1 mục: đang ở RAM thì trả luôn, đã ghi ra đĩa thì đọc lại từ file.
+  async function pmOutBlob(o) {
+    if (o.blob) return o.blob;
+    if (o.handle) return await o.handle.getFile();
+    throw new Error('không tìm thấy dữ liệu video');
+  }
+
+  // ============================================================
+  // 🧠 CHỐNG TRÀN RAM  [v38_18_3_124]
+  // Trước đây cả 7 file MP4 nằm nguyên trong RAM tới lúc bấm tải
+  // (~80MB/video × 7 ≈ 550MB) nên hay chết tab ở video 5-6.
+  // Giờ: xin 1 thư mục, render xong video nào GHI NGAY ra đĩa rồi
+  // buông blob. RAM chỉ giữ đúng 1 video tại một thời điểm.
+  // Trình duyệt không hỗ trợ (Firefox/Safari) thì chạy như cũ.
+  // ============================================================
+  function pmCanStreamToDisk() {
+    return typeof window.showDirectoryPicker === 'function';
+  }
+
+  async function pmAskFolder() {
+    if (!pmCanStreamToDisk()) return null;
+    try {
+      const dir = await window.showDirectoryPicker({ id: 'manim-week-out', mode: 'readwrite' });
+      if (dir.requestPermission) {
+        const p = await dir.requestPermission({ mode: 'readwrite' });
+        if (p !== 'granted') return null;
+      }
+      return dir;
+    } catch (e) {
+      return null;   // người dùng bấm huỷ → quay về cách cũ
+    }
+  }
+
+  async function pmWriteToDisk(dir, name, blob) {
+    const fh = await dir.getFileHandle(name, { create: true });
+    const ws = await fh.createWritable();
+    await ws.write(blob);
+    await ws.close();
+    return fh;
   }
 
   async function pmSaveAll() {
@@ -14386,6 +14468,22 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     const skipped = PM.cards.length - ready.length;
     if (!ready.length) { alert('Chưa video nào có voice — bấm 🎙️ GEN VOICE trước đã.'); return; }
     if (WK.playing) wkStop(false);
+
+    // Hỏi thư mục TRƯỚC khi render — phải mở từ cú click của người dùng.
+    PM_DIR = null; PM_DIR_NAME = '';
+    if (pmCanStreamToDisk()) {
+      const ok = confirm(
+        `Sắp render ${ready.length} video.\n\n` +
+        `Nên chọn 1 thư mục để tool ghi thẳng từng file ra ổ đĩa ngay khi render xong ` +
+        `— giữ hết trong RAM là thứ làm trắng màn hình / đứng máy ở video 5-6.\n\n` +
+        `OK = chọn thư mục (khuyên dùng)\nCancel = giữ trong RAM như cũ`
+      );
+      if (ok) {
+        PM_DIR = await pmAskFolder();
+        PM_DIR_NAME = PM_DIR ? (PM_DIR.name || 'thư mục đã chọn') : '';
+      }
+    }
+
     PM.busy = true;
     lockBatch(true);
     window._pmBatchExport = true;
@@ -14397,18 +14495,31 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
         const i = ready[n];
         const pct = Math.round((n / ready.length) * 100);
         setProg(pct);
-        pmStatus('pmWeekStatus', `⏺ RENDER MP4 — VIDEO ${i + 1} (${n + 1}/${ready.length}) · ${pct}%…`, 'info');
+        pmStatus('pmWeekStatus',
+          `⏺ RENDER MP4 — VIDEO ${i + 1} (${n + 1}/${ready.length}) · ${pct}%` +
+          (PM_DIR ? ` · ghi thẳng vào “${PM_DIR_NAME}”` : ' · giữ trong RAM') + '…', 'info');
         try {
           await loadCardIntoEditor(i, { quiet: true });
           await new Promise(r => setTimeout(r, 150));
           savedVideoBlob = null;
           await recordVideoMp4();
           if (!savedVideoBlob) throw new Error('render không ra file');
-          PM_OUT.push({ i, blob: savedVideoBlob, name: pmFileName(i), script: PM.cards[i].script || '' });
+          const name = pmFileName(i);
+          const script = PM.cards[i].script || '';
+          if (PM_DIR) {
+            const size = savedVideoBlob.size;
+            const handle = await pmWriteToDisk(PM_DIR, name, savedVideoBlob);
+            PM_OUT.push({ i, handle, name, size, script });
+          } else {
+            PM_OUT.push({ i, blob: savedVideoBlob, name, size: savedVideoBlob.size, script });
+          }
         } catch (e) {
           console.error('[pm save]', i, e);
           errs.push(`VIDEO ${i + 1}: ${e.message}`);
         }
+        // Buông tham chiếu cuối cùng tới blob vừa render + nhường 1 nhịp cho GC
+        savedVideoBlob = null;
+        await new Promise(r => setTimeout(r, 250));
         setProg(Math.round(((n + 1) / ready.length) * 100));
       }
     } finally {
@@ -14420,7 +14531,10 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     }
     const note = (skipped ? ` · bỏ qua ${skipped} video chưa có voice` : '') +
                  (errs.length ? ` · lỗi: ${errs.join(' | ')}` : '');
-    pmStatus('pmWeekStatus', `✓ Render xong ${PM_OUT.length}/${ready.length} video${note}`, errs.length ? 'err' : 'ok');
+    pmStatus('pmWeekStatus',
+      `✓ Render xong ${PM_OUT.length}/${ready.length} video` +
+      (PM_DIR ? ` · đã lưu vào “${PM_DIR_NAME}”` : '') + note,
+      errs.length ? 'err' : 'ok');
     if (PM_OUT.length) showBatchModal();
   }
 
@@ -14431,10 +14545,18 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     s.innerHTML = msg;
   }
   function showBatchModal() {
-    const total = PM_OUT.reduce((a, o) => a + o.blob.size, 0);
+    const total = PM_OUT.reduce((a, o) => a + (o.size || (o.blob ? o.blob.size : 0)), 0);
     const inf = $('pmBatchInfo');
-    if (inf) inf.textContent = `${PM_OUT.length} video · ${(total / 1024 / 1024).toFixed(1)} MB`;
-    batchStatus('');
+    if (inf) inf.textContent = `${PM_OUT.length} video · ${(total / 1024 / 1024).toFixed(1)} MB` +
+      (PM_DIR ? ` · đã lưu sẵn trong “${PM_DIR_NAME}”` : '');
+    const dl = $('pmBatchDownload');
+    if (dl) {
+      const sub = dl.querySelector('.sub');
+      if (sub) sub.textContent = PM_DIR
+        ? `File đã nằm trong “${PM_DIR_NAME}” — chỉ bấm nếu muốn thêm 1 bản ở Downloads`
+        : 'Lưu lần lượt từng file MP4 xuống Downloads';
+    }
+    batchStatus(PM_DIR ? `✓ ${PM_OUT.length} file đã ghi thẳng ra ổ đĩa, không giữ trong RAM.` : '', PM_DIR ? 'ok' : '');
     $('pmBatchModal').classList.add('show');
   }
   function hideBatchModal() { $('pmBatchModal').classList.remove('show'); }
@@ -14449,11 +14571,15 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       for (let n = 0; n < PM_OUT.length; n++) {
         const o = PM_OUT[n];
         batchStatus(`⏳ Đang tải ${n + 1}/${PM_OUT.length} — ${o.name}…`);
-        const url = URL.createObjectURL(o.blob);
+        let blob;
+        try { blob = await pmOutBlob(o); }
+        catch (e) { batchStatus(`✗ ${o.name}: ${e.message}`, 'err'); continue; }
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = o.name;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 20000);
+        blob = null;
         await new Promise(r => setTimeout(r, 700));
       }
       batchStatus(`✓ Đã tải ${PM_OUT.length} file.`, 'ok');
@@ -14481,7 +14607,9 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
         for (let n = 0; n < PM_OUT.length; n++) {
           const o = PM_OUT[n];
           batchStatus(`⏳ ${n + 1}/${PM_OUT.length} · Upload ${o.name} lên Drive…`);
-          const uploaded = await uploadBlobToDrive(o.blob, o.name, folderId, token);
+          let blob = await pmOutBlob(o);
+          const uploaded = await uploadBlobToDrive(blob, o.name, folderId, token);
+          blob = null;   // buông ngay, đừng giữ song song nhiều file trong RAM
           const driveLink = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
           batchStatus(`⏳ ${n + 1}/${PM_OUT.length} · Ghi hàng tiếp theo vào Sheet…`);
           const lg = await logToSheetSmart(o.script, driveLink, token, sheetId, sheetGid);
