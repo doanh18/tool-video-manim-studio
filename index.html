@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_121 — MỚI: (1) ô 🔎 CHỦ ĐỀ CÂU HỎI ở tab 1 VIDEO và 1 TUẦN (9:16), kèm ô NGÁCH riêng để Gemini ra đúng dạng đề của kỳ thi. Gõ [math][english] → tự điền Question từ VIDEO 1 xuống, bỏ qua video đã có câu hỏi, mỗi video 1 chủ đề con không trùng, và HEADER BADGE của video đó tự đổi thành đúng tên chủ đề (không bao giờ lệch với câu hỏi); tick GHI ĐÈ để thay hết. (2) Tab 16:9 / NotebookLM: thêm dòng TEXT DƯỚI LOGO (cỡ + màu, chung cụm nền với logo) và ô UPLOAD ẢNH PHỤ / LOGO 2 đặt tự do, kéo thả riêng, có trong file xuất. Không đụng opts/script/steps hay luồng cũ. -->
+<!-- Manim Studio v38_18_3_122 — SỬA: gen kịch bản không còn dính "ASVAB" mặc định. Ô NGÁCH trong hộp 🔎 CHỦ ĐỀ CÂU HỎI giờ là nguồn chuẩn (activeNiche) cho MỌI prompt: tìm câu hỏi, tìm đáp án và gen kịch bản; prompt kịch bản có thêm EXAM/NICHE LOCK cấm nhắc tên kỳ thi khác, hook đọc "This kind of <ngách> <badge> question…". Bỏ trống ô ngách mới rơi về Header Title như cũ. — Trước đó: ô CHỦ ĐỀ CÂU HỎI ở tab 1 VIDEO + 1 TUẦN tự điền Question và HEADER BADGE theo đúng chủ đề từng video; tab 16:9 có TEXT DƯỚI LOGO và ẢNH PHỤ / LOGO 2 kéo thả riêng. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -10568,7 +10568,9 @@ document.getElementById('genFromMineBtn').addEventListener('click', async () => 
   if (Object.values(options).some(v => !v)) { alert('Điền hết các đáp án trước'); return; }
   if (!correctLetters.length) { alert('Đánh dấu ít nhất 1 đáp án đúng (click ◯)'); return; }
 
-  const topic = document.getElementById('topicInput').value.trim() || (RS.brandTop + ' ' + RS.brandBadge);
+  const exam = (typeof activeNiche === 'function') ? activeNiche(false) : '';
+  const topic = document.getElementById('topicInput').value.trim() ||
+                (RS.brandBadge || '').trim() || exam || (RS.brandTop + ' ' + RS.brandBadge);
 
   const btn = document.getElementById('genFromMineBtn');
   const orig = btn.innerHTML;
@@ -10669,7 +10671,7 @@ document.getElementById('genFromMineBtn').addEventListener('click', async () => 
         if (curSec > 60) nextTarget = Math.round(curWords * 50 / curSec);
         else if (curSec < 40) nextTarget = Math.round(curWords * 50 / curSec);
         showTopicStatus(`⏱ Bản nháp ~${curSec.toFixed(0)}s — canh lại cho mạch lạc & đúng độ dài (lần ${tries})...`, 'info');
-        prompt = buildScriptOnlyPrompt({ question, options, answer, topic, forceTotalWords: nextTarget });
+        prompt = buildScriptOnlyPrompt({ question, options, answer, topic, exam, forceTotalWords: nextTarget });
         const re = await callScriptOnce();
         const reScript = extractScript(re.parsed);
         const reTruncated = re.finishReason === 'MAX_TOKENS';
@@ -10713,7 +10715,25 @@ document.getElementById('genFromMineBtn').addEventListener('click', async () => 
   }
 });
 
-function buildScriptOnlyPrompt({ question, options, answer, topic, forceTotalWords }) {
+// ============================================================
+// NGÁCH ĐANG DÙNG (9:16)  [v38_18_3_122]
+// Nguồn chuẩn là ô NGÁCH trong hộp 🔎 CHỦ ĐỀ CÂU HỎI — đang làm Part 107
+// thì mọi prompt phải nói Part 107, không được rơi về "ASVAB" mặc định.
+// Bỏ trống ô đó mới lấy Header Title (tuần → wkBrandTop, 1 video → brandTopText).
+// ============================================================
+function activeNiche(isWeek) {
+  const g = (id) => {
+    const e = document.getElementById(id);
+    return e ? String(e.value || '').trim() : '';
+  };
+  const own = isWeek ? g('pmNicheWeek') : g('pmNicheSingle');
+  if (own) return own;
+  const head = isWeek ? (g('wkBrandTop') || g('brandTopText')) : g('brandTopText');
+  if (head) return head;
+  return (typeof RS !== 'undefined' && RS && RS.brandTop) ? RS.brandTop : '';
+}
+
+function buildScriptOnlyPrompt({ question, options, answer, topic, exam, forceTotalWords }) {
   const correctText = options[answer];
   // TỔNG độ dài: video ~45-58s (dưới 60s) → số từ theo tốc độ đọc thật. forceTotalWords cho phép
   // vòng "tính ngầm" ở GEN ép lại chính xác khi cần.
@@ -10727,10 +10747,22 @@ function buildScriptOnlyPrompt({ question, options, answer, topic, forceTotalWor
   const _allProblemText = [question, options.A, options.B, options.C, options.D].join('   ');
   const _numbers = [...new Set((_allProblemText.match(/\d+(?:[.,:\/]\d+)*%?/g) || []))];
   const _numberList = _numbers.length ? _numbers.join(', ') : '(this question has no numbers)';
+  const _exam = String(exam || '').trim();
+  const _examLock = _exam ? `
+🎯 EXAM / NICHE LOCK — ĐỌC TRƯỚC KHI VIẾT: video này là của **${_exam}**, không phải kỳ thi nào khác.
+- Nỗi đau, bối cảnh, từ vựng, mức độ khó phải đúng của ${_exam} và thí sinh ${_exam}.
+- ⛔ TUYỆT ĐỐI không nhắc tên bất kỳ kỳ thi / chứng chỉ nào khác (ASVAB, GED, SAT, CDL, CCNA, PMP, PTCE, CNA...) ở BẤT KỲ đâu trong "english_script" hay "steps" — kể cả để so sánh.
+- Chỗ nào cần gọi tên kỳ thi thì viết đúng "${_exam}". Nếu không chắc, đừng nhắc tên kỳ thi nào cả.
+` : '';
+  const _topicTxt = String(topic || '').trim();
+  const _sameish = _exam && _topicTxt &&
+    (_topicTxt.toLowerCase().includes(_exam.toLowerCase()) || _exam.toLowerCase().includes(_topicTxt.toLowerCase()));
+  const _hookSubject = (_sameish ? (_topicTxt || _exam)
+                                 : [_exam, _topicTxt].filter(Boolean).join(' ')) || 'this';
   return `You are an expert short-form educational video scriptwriter. A user has provided a complete question + answer set. Your ONLY job is to generate the on-screen "steps" array (the handwritten solution steps) and the spoken "english_script" that explains them.
 
 DO NOT change the question. DO NOT change the options. DO NOT change the answer. Use them exactly as given.
-
+${_examLock}
 🔒 ABSOLUTE FIDELITY TO THE PROBLEM — THIS IS THE #1 RULE. Breaking it makes the whole video WRONG:
 - The spoken question in section [A] MUST state THIS exact question — same numbers, same quantities, same meaning. Do NOT drop, add, round, swap, or "simplify" any number or term.
 - USE ONLY THESE NUMBERS from the problem (spell them out in english_script, keep as DIGITS in steps): ${_numberList}. Do NOT speak any other number UNLESS it is the exact, correct result of a calculation you show in a step.
@@ -10748,7 +10780,7 @@ Người xem là người THẬT, nhiều người sợ/kém môn này. Giải t
 THỬ NGHIỆM: một học sinh lớp 6 nghe một lần phải hiểu ngay. Nếu chưa, đơn giản hóa tiếp.
 
 USER-PROVIDED QUESTION:
-  Topic: ${topic}
+${_exam ? `  Exam / niche: ${_exam}\n` : ''}  Topic: ${topic}
   Question: "${question}"
   Options:
     A) ${options.A}
@@ -10784,7 +10816,7 @@ STRUCTURE (universal — works for math, vocab, reading, science, history, logic
 🚨🚨 KHUNG KỊCH BẢN VẠN NĂNG — DƯỚI 60 GIÂY (TỔNG ${_totalLo}-${_totalHi} từ ≈ 45-58s). Viết "english_script" BẰNG TIẾNG ANH theo ĐÚNG 5 PHẦN dưới đây, đúng thứ tự. KHÔNG chào hỏi, KHÔNG xin like/share/comment/follow, KHÔNG gài app — đi thẳng vào bài.
 
 PHẦN 1 — HOOK & ĐẶT VẤN ĐỀ (0–5s): giữ chân ngay, nói thẳng nội dung + đọc đề.
-  Mẫu (tiếng Anh): "This kind of ${topic} question trips a lot of people up: [đọc đề bài đầy đủ, số bằng chữ]. Let's solve it the easy way."
+  Mẫu (tiếng Anh): "This kind of ${_hookSubject} question trips a lot of people up: [đọc đề bài đầy đủ, số bằng chữ]. Let's solve it the easy way."
   hoặc: "How do you crack this fast? Watch."
 
 PHẦN 2 — ĐƠN GIẢN HÓA & CHUYỂN ĐỔI CỐT LÕI (5–20s): bẻ nhỏ vấn đề thành khái niệm quen thuộc; dịch lời đề bài thành phép tính/biểu thức rõ ràng.
@@ -12909,7 +12941,9 @@ async function applyEditsAndReRender() {
   }
 
   function buildSolvePrompt(rawQ, nOpts) {
+    const exam = (typeof activeNiche === 'function') ? activeNiche(PM.mode === 'week') : '';
     return `You are an expert exam-question writer and solver for US certification / entrance tests (ASVAB, GED, SAT, CDL, CNA, PTCE, PMP, CCNA...).
+${exam ? `\nEXAM / NICHE: ${exam} — giải và đặt lựa chọn đúng chuẩn kỳ thi này (đúng đơn vị, đúng quy định, đúng mức khó). Đừng kéo sang kỳ thi khác.\n` : ''}
 
 INPUT (may already contain answer choices, may not):
 """
@@ -14176,9 +14210,12 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     const letters = c.correct.map(n => String.fromCharCode(65 + n));
     if (letters.some(L => !options[L])) throw new Error('ô đáp án đúng đang trống');
     const answer = letters.join(', ');
-    const topic = ((val('brandTopText', '') + ' ' + (c.badgeText || '')).trim()) ||
+    // Ngách là ô NGÁCH của hộp tìm chủ đề (vd "Part 107"), chủ đề là Header Badge
+    // của chính video đó (vd "Regulations") — không lấy brandTopText mặc định nữa.
+    const exam = (typeof activeNiche === 'function') ? activeNiche(true) : val('brandTopText', '');
+    const topic = (c.badgeText || '').trim() || exam ||
                   (RS.brandTop + ' ' + RS.brandBadge);
-    const prompt = buildScriptOnlyPrompt({ question: q, options, answer, topic });
+    const prompt = buildScriptOnlyPrompt({ question: q, options, answer, topic, exam });
     const parsed = await pmAskGemini(prompt, 'script_gen', onStatus);
     const script = parsed.english_script || parsed.script || parsed.narration || parsed.spoken_script || '';
     if (!script) throw new Error('Gemini không trả kịch bản');
@@ -14482,16 +14519,13 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     return t.split(' ').map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ');
   }
 
-  // Ngách lấy từ ô NGÁCH của chính hộp tìm chủ đề; bỏ trống thì lấy tạm
-  // Header Title (+ ô Ngách/Niche của tab 16:9) như trước.
+  // Dùng chung đúng 1 nguồn ngách với prompt gen kịch bản (activeNiche) để
+  // câu hỏi và kịch bản không bao giờ nói 2 kỳ thi khác nhau.
   function qtExamCtx(isWeek) {
-    const own = String(val(isWeek ? 'pmNicheWeek' : 'pmNicheSingle', '') || '').trim();
+    const own = (typeof activeNiche === 'function') ? activeNiche(isWeek) : '';
     if (own) return own;
-    const brand = isWeek
-      ? (val('wkBrandTop', '') || (typeof WKE !== 'undefined' && WKE.brandTop) || '')
-      : val('brandTopText', '');
     const niche = val('nicheDesc', '');
-    return [String(brand || '').trim(), String(niche || '').trim()].filter(Boolean).join(' · ');
+    return String(niche || '').trim();
   }
 
   function qtBuildPrompt(assign, avoid, exam) {
