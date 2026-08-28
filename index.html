@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_124 — SỬA LỖI TRẮNG MÀN HÌNH / ĐỨNG MÁY KHI RENDER CẢ TUẦN (tab bị Chrome kill vì hết RAM). (1) Render xong video nào GHI THẲNG ra thư mục đã chọn rồi buông blob — RAM chỉ giữ 1 video tại một thời điểm thay vì cả 7 (~550MB). Trình duyệt không hỗ trợ hoặc bấm huỷ thì chạy như cũ. (2) Thêm phanh encodeQueueSize cho VideoEncoder/AudioEncoder — hết cảnh hàng trăm frame 1080x1920 dồn trong hàng đợi GPU. (3) Đóng encoder + thả ArrayBuffer + thu nhỏ canvas ngay sau khi dựng file. (4) Thêm ô CHẤT LƯỢNG (8/5/3 Mbps, mặc định 5) ở thanh tuần. — Trước đó: nền watermark Easy Prep mặc định cho 9:16; activeNiche dùng chung cho mọi prompt + EXAM LOCK; ô CHỦ ĐỀ CÂU HỎI tự điền Question + Header Badge; 16:9 có TEXT DƯỚI LOGO và ẢNH PHỤ / LOGO 2. -->
+<!-- Manim Studio v38_18_3_125 — (1) MỖI VIDEO MỘT KIỂU MỞ ĐẦU: 8 kiểu hook (cái giá phải trả / bẫy 2 đáp án / dẫn bằng con số / thách đấu đồng hồ / hiểu lầm phổ biến / tình huống đời thật / từ khoá + nhịp căng / hỏi thẳng), xoay theo số thứ tự video nên 7 video là 7 cách vào bài khác nhau; prompt bỏ câu mẫu cứng "This kind of ... trips a lot of people up" và cấm chép khuôn sáo, kèm danh sách mở bài của các video khác để tránh trùng. (2) CHỐT CHẶN TÊN KỲ THI: fixExamName() quét kịch bản sau khi Gemini trả về, tên kỳ thi lạ (ASVAB, GED, CDL...) không thuộc ngách thì đổi về đúng ngách — cả tab 1 VIDEO lẫn 1 TUẦN. Sửa luôn lỗi tab 1 VIDEO chưa truyền exam vào prompt. — Trước đó: sửa lỗi trắng màn hình khi render cả tuần (ghi thẳng ra đĩa + phanh encodeQueueSize + ô CHẤT LƯỢNG); nền watermark Easy Prep mặc định 9:16. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -9154,6 +9154,56 @@ async function recordVideoMp4() {
   }
 }
 
+// ============================================================
+// 8 KIỂU MỞ ĐẦU  [v38_18_3_125]
+// Trước đây prompt chỉ đưa ĐÚNG 1 câu mẫu nên Gemini chép nguyên văn,
+// 7 video mở bài giống hệt nhau. Giờ mỗi video lấy 1 kiểu theo chỉ số thẻ
+// → 7 video là 7 cách vào bài khác hẳn.
+// ============================================================
+const SCRIPT_HOOK_STYLES = [
+  { name: 'CÁI GIÁ PHẢI TRẢ',
+    how: 'Nêu thẳng cái giá thật của việc trả lời sai trong nghề / kỳ thi này (trượt, mất chứng chỉ, bị phạt, mất cả section), rồi đọc đề ngay.',
+    ex: 'Miss this one on test day and it drags your whole score down. <đọc đề>' },
+  { name: 'BẪY GIỮA HAI ĐÁP ÁN',
+    how: 'Chỉ thẳng cái bẫy: hai lựa chọn / hai con số trông na ná nhau, phần lớn người thi chọn nhầm cái kia.',
+    ex: 'Two of these answers look almost the same, and most people grab the wrong one. <đọc đề>' },
+  { name: 'DẪN BẰNG CON SỐ',
+    how: 'Mở bằng chính con số hoặc đơn vị then chốt của đề, để nó lơ lửng một nhịp rồi mới bung câu hỏi.',
+    ex: 'Zero point zero four. Remember that number — here is why. <đọc đề>' },
+  { name: 'THÁCH ĐẤU ĐỒNG HỒ',
+    how: 'Thách người xem giải trong vài giây, đếm ngược, tạo áp lực thời gian như phòng thi thật.',
+    ex: 'Ten seconds on the clock. <đọc đề> Go.' },
+  { name: 'HIỂU LẦM PHỔ BIẾN',
+    how: 'Nói rằng gần như ai cũng nhớ sai quy tắc / công thức này, và chỉ ra chỗ hay nhớ lộn.',
+    ex: 'Almost everybody memorizes this rule backwards. <đọc đề>' },
+  { name: 'TÌNH HUỐNG ĐỜI THẬT',
+    how: 'Đặt người xem vào một tình huống có thật của ngách đó (đang làm nghề, đang ngồi phòng thi, đang bị kiểm tra), rồi mới hỏi.',
+    ex: 'You are on site, the inspector walks over and asks you this. <đọc đề>' },
+  { name: 'TỪ KHOÁ + MỘT NHỊP CĂNG',
+    how: 'Bắn ra từ khoá cốt lõi của đề (khái niệm / thuật ngữ / con số), thêm đúng một nhịp căng thẳng, rồi hỏi.',
+    ex: 'Blood alcohol limits — this is where people get sloppy. <đọc đề>' },
+  { name: 'HỎI THẲNG, KHÔNG MÀU MÈ',
+    how: 'Không rào đón gì cả: bắn câu hỏi ra ngay từ chữ đầu tiên, rồi hứa một cách giải nhanh gọn.',
+    ex: '<đọc đề> Here is the fastest way to get it.' }
+];
+
+// Gemini đôi khi vẫn nhắc tên kỳ thi khác (thường là ASVAB vì nó phổ biến).
+// Chốt chặn cuối: quét lại kịch bản, tên nào không thuộc ngách thì thay bằng ngách.
+const EXAM_TOKENS = ['ASVAB', 'GED', 'SAT', 'ACT', 'CDL', 'CCNA', 'CCNP', 'PMP', 'PTCE',
+                     'CNA', 'TEAS', 'HESI', 'NCLEX', 'TOEFL', 'IELTS', 'MCAT', 'LSAT'];
+function fixExamName(text, exam) {
+  const src = String(text || '');
+  const ex = String(exam || '').trim();
+  if (!src || !ex) return src;
+  const up = ex.toUpperCase();
+  let out = src;
+  EXAM_TOKENS.forEach(tok => {
+    if (up.includes(tok)) return;                    // ngách chính là kỳ thi đó → giữ nguyên
+    out = out.replace(new RegExp('\\b' + tok + '\\b', 'g'), ex);
+  });
+  return out;
+}
+
 // Bitrate xuất MP4 — lấy từ ô CHẤT LƯỢNG ở tab 1 TUẦN, mặc định 5 Mbps.
 // Bitrate cao = file nặng = RAM lúc render cũng nặng theo.  [v38_18_3_124]
 function getExportBitrate() {
@@ -10646,7 +10696,8 @@ document.getElementById('genFromMineBtn').addEventListener('click', async () => 
   btn.innerHTML = '<span class="spinner"></span> GENERATING STEPS + SCRIPT...';
   showTopicStatus(`✍️ Generating script for your question — no research, just synthesis...`, 'info');
 
-  let prompt = buildScriptOnlyPrompt({ question, options, answer, topic });
+  const hookIdx = Math.floor(Math.random() * SCRIPT_HOOK_STYLES.length);
+  let prompt = buildScriptOnlyPrompt({ question, options, answer, topic, exam, hookIdx });
 
   try {
     const url = `https://aiplatform.googleapis.com/v1/projects/${SVC_ACC.project_id}/locations/global/publishers/google/models/${getScriptModel()}:generateContent`;
@@ -10739,7 +10790,7 @@ document.getElementById('genFromMineBtn').addEventListener('click', async () => 
         if (curSec > 60) nextTarget = Math.round(curWords * 50 / curSec);
         else if (curSec < 40) nextTarget = Math.round(curWords * 50 / curSec);
         showTopicStatus(`⏱ Bản nháp ~${curSec.toFixed(0)}s — canh lại cho mạch lạc & đúng độ dài (lần ${tries})...`, 'info');
-        prompt = buildScriptOnlyPrompt({ question, options, answer, topic, exam, forceTotalWords: nextTarget });
+        prompt = buildScriptOnlyPrompt({ question, options, answer, topic, exam, hookIdx, forceTotalWords: nextTarget });
         const re = await callScriptOnce();
         const reScript = extractScript(re.parsed);
         const reTruncated = re.finishReason === 'MAX_TOKENS';
@@ -10761,7 +10812,7 @@ document.getElementById('genFromMineBtn').addEventListener('click', async () => 
       options,
       answer,
       steps: result.steps || [],
-      english_script: genScript,
+      english_script: (typeof fixExamName === 'function') ? fixExamName(genScript, exam) : genScript,
       trending_insight: result.trending_insight || 'Script generated from user-provided question.',
       trap_answer: result.trap_answer || answer,
       trap_explanation: result.trap_explanation || ''
@@ -10801,7 +10852,7 @@ function activeNiche(isWeek) {
   return (typeof RS !== 'undefined' && RS && RS.brandTop) ? RS.brandTop : '';
 }
 
-function buildScriptOnlyPrompt({ question, options, answer, topic, exam, forceTotalWords }) {
+function buildScriptOnlyPrompt({ question, options, answer, topic, exam, hookIdx, avoidOpenings, forceTotalWords }) {
   const correctText = options[answer];
   // TỔNG độ dài: video ~45-58s (dưới 60s) → số từ theo tốc độ đọc thật. forceTotalWords cho phép
   // vòng "tính ngầm" ở GEN ép lại chính xác khi cần.
@@ -10827,6 +10878,16 @@ function buildScriptOnlyPrompt({ question, options, answer, topic, exam, forceTo
     (_topicTxt.toLowerCase().includes(_exam.toLowerCase()) || _exam.toLowerCase().includes(_topicTxt.toLowerCase()));
   const _hookSubject = (_sameish ? (_topicTxt || _exam)
                                  : [_exam, _topicTxt].filter(Boolean).join(' ')) || 'this';
+  const _hook = SCRIPT_HOOK_STYLES[
+    (Number.isFinite(hookIdx) ? hookIdx : Math.floor(Math.random() * SCRIPT_HOOK_STYLES.length))
+    % SCRIPT_HOOK_STYLES.length
+  ];
+  const _avoid = (Array.isArray(avoidOpenings) ? avoidOpenings : [])
+    .map(s => String(s || '').trim()).filter(Boolean).slice(0, 8);
+  const _avoidLines = _avoid.length
+    ? '\n  ⛔ Các video khác trong loạt này đã mở đầu như dưới đây — của bạn phải KHÁC HẲN, khác cả cấu trúc câu lẫn từ mở đầu:\n'
+      + _avoid.map(a => '     · "' + a + '…"').join('\n')
+    : '';
   return `You are an expert short-form educational video scriptwriter. A user has provided a complete question + answer set. Your ONLY job is to generate the on-screen "steps" array (the handwritten solution steps) and the spoken "english_script" that explains them.
 
 DO NOT change the question. DO NOT change the options. DO NOT change the answer. Use them exactly as given.
@@ -10881,14 +10942,24 @@ YOUR JOB
 
 STRUCTURE (universal — works for math, vocab, reading, science, history, logic):
 
+🎭 CHỐNG LẶP — QUAN TRỌNG: các dòng "Mẫu" / "Ý cần đạt" bên dưới chỉ mô tả NHỊP và Ý, KHÔNG phải câu để chép.
+Loạt này có nhiều video liên tiếp; nếu video nào cũng mở bài và dẫn dắt bằng đúng một câu thì người xem lướt qua ngay.
+Viết bằng lời của chính bạn. Chép nguyên văn một câu mẫu = coi như sai.
+
 🚨🚨 KHUNG KỊCH BẢN VẠN NĂNG — DƯỚI 60 GIÂY (TỔNG ${_totalLo}-${_totalHi} từ ≈ 45-58s). Viết "english_script" BẰNG TIẾNG ANH theo ĐÚNG 5 PHẦN dưới đây, đúng thứ tự. KHÔNG chào hỏi, KHÔNG xin like/share/comment/follow, KHÔNG gài app — đi thẳng vào bài.
 
 PHẦN 1 — HOOK & ĐẶT VẤN ĐỀ (0–5s): giữ chân ngay, nói thẳng nội dung + đọc đề.
-  Mẫu (tiếng Anh): "This kind of ${_hookSubject} question trips a lot of people up: [đọc đề bài đầy đủ, số bằng chữ]. Let's solve it the easy way."
-  hoặc: "How do you crack this fast? Watch."
+  ⭐ KIỂU MỞ ĐẦU BẮT BUỘC CHO VIDEO NÀY: ${_hook.name}
+     ${_hook.how}
+     Ví dụ về GIỌNG ĐIỆU (chỉ để tham khảo nhịp — CẤM chép lại nguyên văn): ${_hook.ex}
+  ⛔ CẤM tuyệt đối mở bài bằng mấy khuôn sáo đã dùng nát:
+     · "This kind of ... question trips a lot of people up"
+     · "This is a/an ... practice question"
+     · "Bet you can't ..." / "Most people get this wrong" (trừ khi kiểu mở đầu ở trên yêu cầu)${_avoidLines}
+  Vẫn phải ĐỌC ĐỦ ĐỀ BÀI ngay trong phần này (mọi số đọc thành chữ), đúng từng con số.
 
 PHẦN 2 — ĐƠN GIẢN HÓA & CHUYỂN ĐỔI CỐT LÕI (5–20s): bẻ nhỏ vấn đề thành khái niệm quen thuộc; dịch lời đề bài thành phép tính/biểu thức rõ ràng.
-  Mẫu: "To handle this, just remember one simple rule: [khái niệm A] really just means [ý nghĩa X], and [khái niệm B] means [ý nghĩa Y]. So let's break it down — first, we have [thiết lập ban đầu]."
+  Ý cần đạt (TỰ VIẾT bằng lời của bạn, ⛔ CẤM chép cụm "To handle this, just remember"): nêu 1 quy tắc / ý cốt lõi để gỡ bài, nói [khái niệm A] thực chất nghĩa là gì, rồi bắt đầu thiết lập.
   Dùng lời đời thường, hình ảnh quen thuộc (tiền, pizza, quãng đường...) khi giúp dễ hiểu.
 
 PHẦN 3 — CÁC BƯỚC LOGIC (20–40s): dẫn qua TỪNG bước giải tường minh, KHÔNG nhảy bước.
@@ -14289,10 +14360,19 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     const exam = (typeof activeNiche === 'function') ? activeNiche(true) : val('brandTopText', '');
     const topic = (c.badgeText || '').trim() || exam ||
                   (RS.brandTop + ' ' + RS.brandBadge);
-    const prompt = buildScriptOnlyPrompt({ question: q, options, answer, topic, exam });
+    // Mỗi video 1 kiểu mở đầu (xoay theo chỉ số thẻ) + tránh trùng mở bài
+    // với các video khác đang có trong tuần.
+    const avoidOpenings = PM.cards.map((x, j) => (j === i ? '' :
+      String(x.script || '').trim().replace(/\s+/g, ' ').split(' ').slice(0, 14).join(' ')))
+      .filter(Boolean);
+    const prompt = buildScriptOnlyPrompt({
+      question: q, options, answer, topic, exam, hookIdx: i, avoidOpenings
+    });
     const parsed = await pmAskGemini(prompt, 'script_gen', onStatus);
-    const script = parsed.english_script || parsed.script || parsed.narration || parsed.spoken_script || '';
+    let script = parsed.english_script || parsed.script || parsed.narration || parsed.spoken_script || '';
     if (!script) throw new Error('Gemini không trả kịch bản');
+    // Chốt chặn: tên kỳ thi lạ lọt vào thì đổi về đúng ngách.
+    if (typeof fixExamName === 'function') script = fixExamName(script, exam);
     c.script = script;
     c.steps = normSteps(parsed.steps, c.stepColor);
   }
