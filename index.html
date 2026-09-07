@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_129 — Bảng chọn QR giờ có 13 mã: thêm DMV (Easy Prep) xếp cạnh CDL, và Network+ (Easy Prep) xếp ngay trên Network+ (Ready) cho dễ so. — v127/128: nút "+ Thêm ảnh overlay" đổi thành "+ Thêm QR", bấm ra bảng chọn các mã QR nhúng sẵn trong file; tên đặt theo đích đến THẬT của mã (đã quét kiểm tra từng cái), có in link dưới mỗi ô để đối chiếu; overlay chỉ lưu qrId nên localStorage không phình và reload tự dựng lại ảnh; vẫn còn đường "Dùng ảnh khác từ máy…". — Trước đó: sửa luồng lưu (OPFS ngầm, chọn thư mục lúc tải); 8 kiểu mở đầu + fixExamName; phanh encodeQueueSize + ô CHẤT LƯỢNG; nền watermark Easy Prep. -->
+<!-- Manim Studio v38_18_3_130 — Tab 1 VIDEO giờ cũng có khối "Text & QR overlay" (nút + Thêm text overlay / + Thêm QR), bê nguyên từ tab 1 TUẦN. Hai tab dùng CHUNG 1 danh sách: thêm/sửa/xoá bên nào cũng hiện bên kia, đổi tab là dựng lại card cho khớp. RS.overlays trỏ thẳng vào danh sách chung nên tab 1 VIDEO vẽ overlay ở preview, khung phóng to và cả file MP4; 16:9 không đụng tới. — Trước đó: bảng chọn 13 mã QR nhúng sẵn (tên theo đích đến thật, lưu qrId nên localStorage không phình); luồng lưu OPFS ngầm + chọn thư mục lúc tải; 8 kiểu mở đầu + fixExamName; phanh encodeQueueSize + ô CHẤT LƯỢNG; nền watermark Easy Prep. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2169,6 +2169,19 @@
             </div>
             <div class="gen-status" id="pmTopicSingleStatus"></div>
           </div>
+
+          <!-- TEXT & QR OVERLAY — dùng chung với tab 1 TUẦN [v38_18_3_130] -->
+          <label class="pm-lbl" style="margin-top:12px">📝 Text &amp; QR overlay · dùng chung với cả 7 video</label>
+          <div id="svOvList"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="pm-mini" id="svOvAdd">+ Thêm text overlay</button>
+            <button type="button" class="pm-mini" id="svOvImgAdd">+ Thêm QR</button>
+          </div>
+          <div class="pm-hint" style="margin:6px 0 0">
+            Đây là <b>cùng một danh sách</b> với tab 1 TUẦN — thêm ở đâu cũng hiện ở cả hai, và vẽ đè lên
+            MỌI video: preview, khung phóng to, và file MP4 xuất ra. Đổi vị trí bằng ô X/Y (% khung),
+            nút ✕ để xoá.
+          </div>
         </div>
 
         <!-- ---------- TAB 2: 1 TUẦN · 7 VIDEO ---------- -->
@@ -2273,7 +2286,7 @@
               <select id="wkBgPattern" class="input" style="min-width:90px;cursor:pointer" title="Kiểu hoa văn"></select>
             </div>
 
-            <label class="pm-lbl" style="margin-top:12px">📝 Text &amp; ảnh overlay · dùng chung cho cả 7 video</label>
+            <label class="pm-lbl" style="margin-top:12px">📝 Text &amp; QR overlay · dùng chung cho MỌI video</label>
             <div id="wkOvList"></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button type="button" class="pm-mini" id="wkOvAdd">+ Thêm text overlay</button>
@@ -13613,7 +13626,7 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     karaokeIntroEndTime = o.audio.kie; answerRevealed = o.audio.revealed;
     try { syncEditor(); } catch (e) {}
     RS.qImageEl = o.qImg; RS.bgMediaEl = o.bgEl; RS.bgMediaType = o.bgType;
-    RS.overlays = [];                       // overlay chỉ thuộc về tab tuần
+    RS.overlays = ovList();                 // overlay dùng chung cho cả 2 tab
     try { renderActiveCanvas(0); } catch (e) {}
   }
 
@@ -15160,6 +15173,9 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     const sg = $('pmSingle'), wk = $('pmWeek');
     if (sg) sg.style.display = mode === 'single' ? '' : 'none';
     if (wk) wk.style.display = mode === 'week' ? '' : 'none';
+    // 2 tab dùng chung 1 danh sách overlay → dựng lại card cho tab vừa mở,
+    // nếu không thì sửa bên này, qua bên kia vẫn thấy chữ cũ.
+    if (typeof ovRender === 'function') { try { ovRender(); } catch (e) {} }
     applyPreviewMode();
   }
   window.pmSetMode = setPmMode;
@@ -15174,9 +15190,16 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
   });
 
   // ============================================================
-  // TEXT OVERLAY DÙNG CHUNG — thuộc về tab 1 TUẦN (WKE.overlays)
+  // TEXT & QR OVERLAY DÙNG CHUNG (WKE.overlays)
+  // Một danh sách duy nhất, hiện ở CẢ tab 1 VIDEO và tab 1 TUẦN.
   // ============================================================
-  function ovList() { if (!Array.isArray(WKE.overlays)) WKE.overlays = []; return WKE.overlays; }
+  function ovList() {
+    if (!Array.isArray(WKE.overlays)) WKE.overlays = [];
+    // Tab 1 VIDEO cũng vẽ overlay → giữ RS trỏ đúng vào danh sách chung.
+    // (Chỉ ảnh hưởng khung 9:16; renderFrame16x9_* không gọi drawTextOverlays.)
+    if (typeof RS !== 'undefined' && RS && RS.overlays !== WKE.overlays) RS.overlays = WKE.overlays;
+    return WKE.overlays;
+  }
   function ovSave() {
     envSave();
     // localStorage có hạn ~5MB: ảnh to sẽ không lưu được src (vẫn dùng bình
@@ -15441,39 +15464,52 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     });
   }
 
+  // Danh sách overlay dùng chung: tab 1 VIDEO và tab 1 TUẦN cùng nhìn vào
+  // WKE.overlays, nên card phải dựng cho CẢ HAI khung.  [v38_18_3_130]
+  function ovHosts() {
+    return [$('wkOvList'), $('svOvList')].filter(Boolean);
+  }
+
   function ovRender() {
-    const host = $('wkOvList');
-    if (!host) return;
-    host.innerHTML = '';
-    ovList().forEach((o, i) => host.appendChild(ovRow(o, i)));
+    const hosts = ovHosts();
+    if (!hosts.length) return;
+    hosts.forEach(host => {
+      host.innerHTML = '';
+      ovList().forEach((o, i) => host.appendChild(ovRow(o, i)));
+    });
   }
 
   // Sau khi kéo trên canvas → cập nhật lại slider X/Y
   function ovSyncNums() {
-    const host = $('wkOvList');
-    if (!host) return;
-    Array.from(host.children).forEach((box, i) => {
-      const o = ovList()[i];
-      if (!o || !box._ranges) return;
-      ['x', 'y'].forEach(k => {
-        const r = box._ranges[k];
-        if (r) { r.rng.value = (o[k] == null ? 50 : o[k]); r.paint(); }
+    ovHosts().forEach(host => {
+      Array.from(host.children).forEach((box, i) => {
+        const o = ovList()[i];
+        if (!o || !box._ranges) return;
+        ['x', 'y'].forEach(k => {
+          const r = box._ranges[k];
+          if (r) { r.rng.value = (o[k] == null ? 50 : o[k]); r.paint(); }
+        });
+        const rs = box._ranges[o.kind === 'img' ? 'wPct' : 'size'];
+        if (rs) { rs.rng.value = (o.kind === 'img' ? (o.wPct == null ? 30 : o.wPct) : (o.size == null ? 60 : o.size)); rs.paint(); }
       });
-      const rs = box._ranges[o.kind === 'img' ? 'wPct' : 'size'];
-      if (rs) { rs.rng.value = (o.kind === 'img' ? (o.wPct == null ? 30 : o.wPct) : (o.size == null ? 60 : o.size)); rs.paint(); }
     });
   }
 
   {
-    const addImg = $('wkOvImgAdd');
-    if (addImg) addImg.addEventListener('click', () => qrPickOpen(null));
-
-    const add = $('wkOvAdd');
-    if (add) add.addEventListener('click', () => {
+    // Cả 2 tab (1 VIDEO / 1 TUẦN) dùng chung 1 danh sách nên nút cũng chung việc.
+    function ovAddText() {
       if (ovList().filter(o => o.kind !== 'img').length >= 6) { alert('Tối đa 6 text overlay'); return; }
       ovList().push({ text: 'New text', x: 50, y: 50, size: 60, color: '#111111',
                       bg: '#F5E96B', bgAlpha: 0, align: 'center' });
       ovSave(); ovRender(); ovRepaint();
+    }
+    ['wkOvImgAdd', 'svOvImgAdd'].forEach(id => {
+      const b = $(id);
+      if (b) b.addEventListener('click', () => qrPickOpen(null));
+    });
+    ['wkOvAdd', 'svOvAdd'].forEach(id => {
+      const b = $(id);
+      if (b) b.addEventListener('click', ovAddText);
     });
   }
 
