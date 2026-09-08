@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_135 — Cập nhật mã QR Real Estate: đổi từ link rút gọn qr.generatorqr.com sang link thật abc-elearning.org/RealEstate/share/realestate. Giữ id "real-estate" nên overlay đang dùng tự nhận ảnh mới. Cả 13 mã trong thư viện giờ đều trỏ thẳng abc-elearning.org, không còn mã nào qua link rút gọn. — v134: sửa lỗi khung điện thoại to còn hiện trên preview sau khi bỏ tab 1 VIDEO (setMode gọi lại pmApplyPreviewMode), .week-grid về lưới 3 cột. — Trước đó: luồng lưu OPFS ngầm + chọn thư mục lúc tải; 8 kiểu mở đầu + fixExamName; phanh encodeQueueSize + ô CHẤT LƯỢNG; nền watermark Easy Prep. -->
+<!-- Manim Studio v38_18_3_137 — GIỮ NGUYÊN GIỌNG khi đổi tốc độ: thêm time-stretch WSOLA (cắt khung ~50ms, dò điểm dán khớp sóng, chồng 50% bằng cửa sổ Hann) nên chỉ nhịp nói thay đổi, cao độ không đổi. Ô tick "GIỮ NGUYÊN GIỌNG" bật sẵn ở khung ⏩ TỐC ĐỘ; tắt thì quay về resample kiểu cũ (giọng cao/thấp theo). Áp cho cả xuất MP4 lẫn preview — preview dựng sẵn bản đã kéo nhịp và nhớ theo thẻ + hệ số. — v136: ô ⏩ TỐC ĐỘ (thanh kéo + nhập số 0.5x–2x, mặc định 1x) áp cho tất cả video. — Trước đó: 13 mã QR nhúng sẵn; bỏ tab 1 VIDEO; luồng lưu OPFS ngầm; 8 kiểu mở đầu + fixExamName; nền watermark Easy Prep. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -796,6 +796,40 @@
   .gen-topic-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  /* ===== TỐC ĐỘ VIDEO  [v38_18_3_136] ===== */
+  .pm-speed {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 10px; padding: 9px 11px;
+    background: #14171d; border: 1px solid #262b34; border-radius: 9px;
+  }
+  .pm-speed .sp-lbl {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700;
+    letter-spacing: .8px; color: var(--text-faint); flex: 0 0 auto;
+  }
+  .pm-speed input[type=range] {
+    flex: 1 1 160px; min-width: 130px; accent-color: var(--topic); cursor: pointer;
+  }
+  .pm-speed input[type=number] {
+    flex: 0 0 auto; width: 66px; padding: 4px 6px;
+    background: #0d0f14; border: 1px solid #2c313b; border-radius: 6px;
+    color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    text-align: center;
+  }
+  .pm-speed .sp-x {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-faint);
+    margin-left: -6px; flex: 0 0 auto;
+  }
+  .pm-speed .sp-reset { flex: 0 0 auto; padding: 4px 9px; }
+  .pm-speed .sp-pitch {
+    display: flex; align-items: center; gap: 5px; flex: 0 0 auto; cursor: pointer;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-faint);
+    user-select: none;
+  }
+  .pm-speed .sp-dur {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--topic); flex: 1 1 auto; text-align: right; min-width: 120px;
   }
 
   /* ===== BẢNG CHỌN QR  [v38_18_3_127] ===== */
@@ -2281,6 +2315,26 @@
               <button type="button" class="pm-big solve" id="pmSolveBatch">🔎 TÌM ĐÁP ÁN</button>
               <button type="button" class="pm-big script" id="pmScriptBatch">✍️ GEN KỊCH BẢN</button>
               <button type="button" class="pm-big voice" id="pmVoiceBatch">🎙️ GEN VOICE</button>
+            </div>
+
+            <!-- TỐC ĐỘ VIDEO — áp cho tất cả video  [v38_18_3_136] -->
+            <div class="pm-speed">
+              <span class="sp-lbl">⏩ TỐC ĐỘ</span>
+              <input type="range" id="pmSpeed" min="0.5" max="2" step="0.05" value="1">
+              <input type="number" id="pmSpeedNum" min="0.5" max="2" step="0.05" value="1">
+              <span class="sp-x">x</span>
+              <button type="button" class="pm-mini sp-reset" id="pmSpeedReset">↺ 1x</button>
+              <label class="sp-pitch" title="Bật: giữ nguyên giọng, chỉ nói nhanh/chậm hơn (WSOLA). Tắt: kéo giãn sóng, giọng cao/thấp theo tốc độ.">
+                <input type="checkbox" id="pmSpeedPitch" checked> GIỮ NGUYÊN GIỌNG
+              </label>
+              <span class="sp-dur" id="pmSpeedInfo"></span>
+            </div>
+            <div class="pm-hint" style="margin:6px 0 0">
+              Áp cho <b>tất cả video</b> lúc xuất MP4 và cả lúc bấm play xem thử: 1x giữ nguyên,
+              trên 1x nhanh hơn, dưới 1x chậm lại.
+              Bật <b>GIỮ NGUYÊN GIỌNG</b> (mặc định) thì chỉ nhịp nói thay đổi, cao độ không đổi —
+              tốt trong khoảng 0.7x–1.5x, quá đà thì nghe hơi rung. Tắt đi là kiểu kéo giãn sóng
+              thường thấy trên TikTok: nhanh thì giọng cao lên, chậm thì trầm xuống.
             </div>
             <div class="pm-prog" id="pmProg"><i></i></div>
             <div class="gen-status" id="pmWeekStatus"></div>
@@ -9108,6 +9162,104 @@ function playDingSound() {
 }
 
 // ===== EXPORT: MP4 (WebCodecs) — uses canvas directly, NO tainted issues =====
+// ============================================================
+// ⏩ TỐC ĐỘ VIDEO  [v38_18_3_136]
+// Đổi tốc độ = đổi audio (resample) + kéo/giãn mốc thời gian. renderFrame
+// đọc syncMarkers nên chỉ cần chia mốc cho hệ số là khung hình tự khớp.
+// Áp trong recordVideoMp4 → ăn cho CẢ xuất 1 video lẫn xuất cả tuần.
+// ============================================================
+function getVideoSpeed() {
+  const el = document.getElementById('pmSpeed');
+  const v = el ? parseFloat(el.value) : NaN;
+  if (!Number.isFinite(v)) return 1;
+  return Math.min(2, Math.max(0.5, v));
+}
+
+// Dựng lại AudioBuffer ở tốc độ mới.
+//
+// 2 cách, chọn bằng ô "giữ nguyên giọng":
+//  · WSOLA (mặc định) — cắt audio thành khung nhỏ rồi dán chồng lại thưa/dày
+//    hơn. Số mẫu/giây không đổi nên CAO ĐỘ GIỮ NGUYÊN, chỉ nhịp nói thay đổi.
+//    Mỗi khung được dò tìm điểm dán khớp sóng nhất nên không bị lụp bụp.
+//  · Resample — kéo giãn thẳng dải sóng, nhanh gọn nhưng giọng cao/thấp theo.
+function speedKeepPitch() {
+  const el = document.getElementById('pmSpeedPitch');
+  return el ? !!el.checked : true;
+}
+
+// WSOLA: dò offset trên kênh 0 rồi áp CHUNG cho mọi kênh để không lệch pha.
+function wsolaStretch(chans, rate, sr) {
+  const x0 = chans[0];
+  const nCh = chans.length;
+  const N = Math.max(256, Math.round(0.05 * sr) & ~1);   // khung ~50ms
+  const Hs = N >> 1;                                     // chồng 50%
+  const Ha = Math.max(1, Math.round(Hs * rate));
+  const delta = Math.round(0.005 * sr);                  // dò ±5ms
+  const STEP = 8;                                        // lấy mẫu thưa khi dò cho nhanh
+
+  const outLen = Math.max(1, Math.ceil(x0.length / rate) + N);
+  const out = [];
+  for (let c = 0; c < nCh; c++) out.push(new Float32Array(outLen));
+
+  // Hann tuần hoàn: chồng 50% thì tổng cửa sổ = 1, khỏi phải chuẩn hoá lại
+  const win = new Float32Array(N);
+  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N);
+
+  let ref = null;      // đoạn "đáng lẽ nối tiếp" của khung vừa dán
+  let outPos = 0, a = 0;
+
+  while (a + N < x0.length && outPos + N <= outLen) {
+    let best = 0;
+    if (ref) {
+      let bestScore = -Infinity;
+      const lo = Math.max(-delta, -a);
+      const hi = Math.min(delta, x0.length - N - a);
+      for (let dd = lo; dd <= hi; dd++) {
+        const s = a + dd;
+        let dot = 0, en = 1e-9;
+        for (let i = 0; i < N; i += STEP) {
+          const v = x0[s + i];
+          dot += v * ref[i];
+          en += v * v;
+        }
+        const score = dot / Math.sqrt(en);   // chuẩn hoá theo năng lượng,
+        if (score > bestScore) { bestScore = score; best = dd; }  // khỏi bị hút về chỗ to tiếng
+      }
+    }
+    const s = a + best;
+    for (let c = 0; c < nCh; c++) {
+      const xs = chans[c], ys = out[c];
+      for (let i = 0; i < N; i++) ys[outPos + i] += xs[s + i] * win[i];
+    }
+    if (s + Hs + N <= x0.length) ref = x0.subarray(s + Hs, s + Hs + N);
+    else break;
+    outPos += Hs;
+    a += Ha;
+  }
+
+  const finalLen = Math.max(1, Math.min(outLen, Math.max(outPos + Hs, Math.ceil(x0.length / rate))));
+  return out.map(y => y.subarray(0, finalLen));
+}
+
+async function makeSpeedBuffer(buf, speed) {
+  if (speedKeepPitch()) {
+    const chans = [];
+    for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
+    const stretched = wsolaStretch(chans, speed, buf.sampleRate);
+    const outBuf = audioContext.createBuffer(buf.numberOfChannels, stretched[0].length, buf.sampleRate);
+    for (let c = 0; c < buf.numberOfChannels; c++) outBuf.copyToChannel(stretched[c], c);
+    return outBuf;
+  }
+  const len = Math.max(1, Math.ceil(buf.length / speed));
+  const off = new OfflineAudioContext(buf.numberOfChannels, len, buf.sampleRate);
+  const src = off.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = speed;
+  src.connect(off.destination);
+  src.start(0);
+  return await off.startRendering();
+}
+
 async function recordVideoMp4() {
   if (!audioBuffer) {
     alert('Generate voice first');
@@ -9132,6 +9284,26 @@ async function recordVideoMp4() {
   savedVideoBlob = null;
   savedVideoFilename = '';
 
+  // ⏩ Áp tốc độ: đổi audio + co giãn mốc, render xong trả lại nguyên trạng
+  // để preview và lần xuất sau vẫn nhìn vào bản gốc.
+  const _spd = (typeof getVideoSpeed === 'function') ? getVideoSpeed() : 1;
+  const _spdOn = Math.abs(_spd - 1) > 0.001;
+  const _bakBuf = audioBuffer, _bakDur = audioDuration;
+  const _bakMarks = syncMarkers, _bakRev = window._whisperRevealTime;
+  if (_spdOn) {
+    try {
+      audioBuffer = await makeSpeedBuffer(audioBuffer, _spd);
+      audioDuration = audioBuffer.duration;
+      syncMarkers = (_bakMarks || []).map(m => ({ ...m, time: m.time / _spd }));
+      if (typeof _bakRev === 'number') window._whisperRevealTime = _bakRev / _spd;
+      console.log('[export] speed', _spd + 'x ·', _bakDur.toFixed(1) + 's →', audioDuration.toFixed(1) + 's');
+    } catch (e) {
+      console.warn('[export] không đổi được tốc độ, giữ 1x:', e);
+      audioBuffer = _bakBuf; audioDuration = _bakDur;
+      syncMarkers = _bakMarks; window._whisperRevealTime = _bakRev;
+    }
+  }
+
   try {
     const hasWebCodecs = ('VideoEncoder' in window) && ('AudioEncoder' in window) && (typeof Mp4Muxer !== 'undefined');
     if (hasWebCodecs) {
@@ -9147,6 +9319,11 @@ async function recordVideoMp4() {
     showStatus('✗ ' + e.message, 'err');
   } finally {
     isExporting = false;
+    // Trả audio + mốc về nguyên bản (bản gốc chưa đổi tốc độ)
+    if (_spdOn) {
+      audioBuffer = _bakBuf; audioDuration = _bakDur;
+      syncMarkers = _bakMarks; window._whisperRevealTime = _bakRev;
+    }
     btn.disabled = false;
     btn.textContent = original;
     // Re-render live preview to restore HUD
@@ -14201,16 +14378,38 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     WK.idx = i; WK.target = target; WK.W = W; WK.H = H; WK.buf = buf;
     wkApply(c, buf);
     try { if (audioContext.state === 'suspended') await audioContext.resume(); } catch (e) {}
+    const spd = (typeof getVideoSpeed === 'function') ? getVideoSpeed() : 1;
+    const spdOn = Math.abs(spd - 1) > 0.001;
+    const keepPitch = spdOn && (typeof speedKeepPitch === 'function') && speedKeepPitch();
+
+    // Giữ nguyên giọng thì phải dựng sẵn bản đã kéo nhịp rồi phát ở tốc độ 1.
+    // Nhớ lại theo thẻ + hệ số để bấm play lần sau không phải tính lại.
+    let playBuf = buf, rate = 1;
+    if (spdOn) {
+      if (keepPitch) {
+        if (!c._spdCache || c._spdCache.spd !== spd || c._spdCache.from !== buf) {
+          try {
+            c._spdCache = { spd, from: buf, buf: await makeSpeedBuffer(buf, spd) };
+          } catch (e) { console.warn('[wk speed]', e); c._spdCache = null; }
+        }
+        if (c._spdCache) playBuf = c._spdCache.buf; else rate = spd;
+      } else {
+        rate = spd;
+      }
+    }
+
     const src = audioContext.createBufferSource();
-    src.buffer = buf; src.connect(audioContext.destination);
-    src.start(0, WK.offset);
+    src.buffer = playBuf; src.playbackRate.value = rate;
+    src.connect(audioContext.destination);
+    // WK.offset tính theo giây của BẢN GỐC → quy về giây trong bản đang phát
+    src.start(0, playBuf === buf ? WK.offset : WK.offset / spd);
     WK.src = src;
-    WK.startAt = audioContext.currentTime - WK.offset;
+    WK.startAt = audioContext.currentTime - (WK.offset / spd);
     WK.playing = true;
     const ctx2d = target.getContext('2d');
     const loop = () => {
       if (!WK.playing) return;
-      const t = audioContext.currentTime - WK.startAt;
+      const t = (audioContext.currentTime - WK.startAt) * spd;   // → giây của bản gốc
       if (t >= buf.duration) {
         WK.offset = 0; wkStop(false); wkStatic(i, target, W, H);
         return;
@@ -14218,7 +14417,7 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       WK.offset = t;
       answerRevealed = (syncMarkers.length > 0) && t >= getRevealTime();
       try { renderFrame(ctx2d, W, H, t); } catch (e) {}
-      wkTime(t, buf.duration);
+      wkTime(t / spd, buf.duration / spd);                        // đồng hồ hiện thời lượng thật
       WK.raf = requestAnimationFrame(loop);
     };
     wkSyncPlayUI();
@@ -14228,7 +14427,8 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
 
   function wkToggle(i, target, W, H) {
     if (WK.playing && WK.idx === i) {
-      WK.offset = audioContext.currentTime - WK.startAt;
+      WK.offset = (audioContext.currentTime - WK.startAt) *
+                  ((typeof getVideoSpeed === 'function') ? getVideoSpeed() : 1);
       wkStop(true);
       wkStatic(i, target, W, H);
     } else {
@@ -15074,6 +15274,63 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
       if (e.key === 'Enter') { e.preventDefault(); qtRunSingle(); }
     });
   });
+
+  // ---- ⏩ TỐC ĐỘ VIDEO  [v38_18_3_136] ----
+  {
+    const SPD_KEY = 'manim_studio_speed_v1' + WSX;
+    const rng = $('pmSpeed'), num = $('pmSpeedNum'), info = $('pmSpeedInfo');
+
+    function spdTotal() {
+      // tổng thời lượng voice của các video đã có tiếng
+      let s = 0;
+      PM.cards.forEach(c => { if (c.audioDur) s += c.audioDur; });
+      return s;
+    }
+    function spdPaint() {
+      const v = (typeof getVideoSpeed === 'function') ? getVideoSpeed() : 1;
+      if (!info) return;
+      const tot = spdTotal();
+      if (!tot) { info.textContent = v === 1 ? 'giữ nguyên tốc độ gốc' : `×${v.toFixed(2)}`; return; }
+      const now = tot / v;
+      const d = (x) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, '0')}`;
+      info.textContent = v === 1
+        ? `tổng ${d(tot)} · giữ nguyên`
+        : `tổng ${d(tot)} → ${d(now)} (${v > 1 ? '-' : '+'}${d(Math.abs(tot - now))})`;
+    }
+    function spdSet(v, from) {
+      v = Math.min(2, Math.max(0.5, Number.isFinite(v) ? v : 1));
+      v = Math.round(v * 100) / 100;
+      if (rng && from !== 'rng') rng.value = v;
+      if (rng && from === 'rng') rng.value = v;
+      if (num) num.value = v;
+      PM.cards.forEach(c => { c._spdCache = null; });   // hệ số đổi → bỏ bản đã dựng
+      try { localStorage.setItem(SPD_KEY, String(v)); } catch (e) {}
+      spdPaint();
+    }
+    if (rng) rng.addEventListener('input', () => spdSet(parseFloat(rng.value), 'rng'));
+    if (num) num.addEventListener('input', () => {
+      const v = parseFloat(num.value);
+      if (Number.isFinite(v) && v >= 0.5 && v <= 2 && rng) { rng.value = v; spdPaint(); }
+    });
+    if (num) num.addEventListener('change', () => spdSet(parseFloat(num.value), 'num'));
+    const rst = $('pmSpeedReset');
+    if (rst) rst.addEventListener('click', () => spdSet(1, 'btn'));
+    const pit = $('pmSpeedPitch');
+    if (pit) pit.addEventListener('change', () => {
+      try { localStorage.setItem(SPD_KEY + '_pitch', pit.checked ? '1' : '0'); } catch (e) {}
+      PM.cards.forEach(c => { c._spdCache = null; });   // bỏ bản đã dựng theo cách cũ
+      spdPaint();
+    });
+
+    let saved = 1;
+    try { saved = parseFloat(localStorage.getItem(SPD_KEY)) || 1; } catch (e) {}
+    try {
+      const p = localStorage.getItem(SPD_KEY + '_pitch');
+      if (p !== null && pit) pit.checked = (p === '1');
+    } catch (e) {}
+    spdSet(saved, 'init');
+    window.pmSpeedRefresh = spdPaint;   // gọi lại sau khi gen voice để cập nhật thời lượng
+  }
 
   // ---------- wiring ----------
   const addBtn = $('pmAddCard');
