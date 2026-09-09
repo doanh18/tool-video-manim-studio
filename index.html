@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Manim Studio v38_18_3_137 — GIỮ NGUYÊN GIỌNG khi đổi tốc độ: thêm time-stretch WSOLA (cắt khung ~50ms, dò điểm dán khớp sóng, chồng 50% bằng cửa sổ Hann) nên chỉ nhịp nói thay đổi, cao độ không đổi. Ô tick "GIỮ NGUYÊN GIỌNG" bật sẵn ở khung ⏩ TỐC ĐỘ; tắt thì quay về resample kiểu cũ (giọng cao/thấp theo). Áp cho cả xuất MP4 lẫn preview — preview dựng sẵn bản đã kéo nhịp và nhớ theo thẻ + hệ số. — v136: ô ⏩ TỐC ĐỘ (thanh kéo + nhập số 0.5x–2x, mặc định 1x) áp cho tất cả video. — Trước đó: 13 mã QR nhúng sẵn; bỏ tab 1 VIDEO; luồng lưu OPFS ngầm; 8 kiểu mở đầu + fixExamName; nền watermark Easy Prep. -->
+<!-- Manim Studio v38_18_3_139 — SỬA LỖI SỬA KỊCH BẢN XONG BẤM GEN VOICE LẠI BỊ TRẢ VỀ BẢN CŨ: doVoice có một nhánh cũ đọc lại #scriptText của editor khi PM.active trùng chỉ số thẻ. Từ khi bỏ tab 1 VIDEO thì ô đó người dùng không sờ tới được, lại bị editorRestore() trả về nội dung cũ sau mỗi lượt chạy — nên nhánh đó chỉ còn tác dụng ghi đè mất bản vừa sửa rồi đọc theo bản cũ. Đã bỏ hẳn: ô kịch bản trên THẺ là nguồn duy nhất. — v138: normSteps nhận mọi kiểu steps + hỏi lại khi 0 step. — v137: WSOLA giữ nguyên giọng. — v136: ô ⏩ TỐC ĐỘ. — Trước đó: 13 mã QR nhúng sẵn; bỏ tab 1 VIDEO; luồng lưu OPFS ngầm; nền watermark Easy Prep. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -13188,15 +13188,40 @@ async function applyEditsAndReRender() {
   function defStepColor() { return val('stepColor', '#d92027'); }
 
   // steps: { text, color (swatch gợi ý), ink (màu thật khi render) }
+  // Gemini không phải lúc nào cũng trả steps đúng khuôn [{text,color}].
+  // Có lúc là chuỗi trần, có lúc đổi tên khoá (step/line/content), có lúc là
+  // object thay vì mảng. Trước đây mấy kiểu đó bị lọc sạch → thẻ hiện 0 step
+  // dù kịch bản vẫn có [1][2][3]. Giờ nhận hết.  [v38_18_3_138]
   function normSteps(arr, fallbackInk) {
     const pal = PALETTE();
-    return (Array.isArray(arr) ? arr : []).filter(s => s && s.text !== undefined)
-      .map((s, j) => {
+    let list = arr;
+    if (!Array.isArray(list)) {
+      if (typeof list === 'string') list = list.split(/\r?\n/);
+      else if (list && typeof list === 'object') list = Object.values(list);
+      else list = [];
+    }
+    return list
+      .map(s => {
+        let text = '', color = '', ink = '';
+        if (typeof s === 'string' || typeof s === 'number') {
+          text = String(s);
+        } else if (s && typeof s === 'object') {
+          const t = s.text ?? s.step ?? s.line ?? s.content ?? s.label ?? s.value ?? s.description;
+          text = (t === undefined || t === null) ? '' : String(t);
+          color = String(s.color || '');
+          ink = String(s.ink || '');
+        }
+        // bỏ số thứ tự dính đầu: "[1] ", "1) ", "1. "
+        text = text.trim().replace(/^\s*(?:\[\d+\]|\(?\d+[.)])\s+/, '').trim();
+        return { text, color, ink };
+      })
+      .filter(o => o.text)
+      .map((o, j) => {
         let col = pal[j % pal.length];
-        const raw = String(s.color || '').toLowerCase();
+        const raw = o.color.toLowerCase();
         if (CNAME[raw]) col = CNAME[raw];
-        else if (/^#[0-9a-f]{3,8}$/i.test(s.color || '')) col = s.color;
-        return { text: String(s.text || ''), color: col, ink: s.ink || fallbackInk || defStepColor() };
+        else if (/^#[0-9a-f]{3,8}$/i.test(o.color)) col = o.color;
+        return { text: o.text, color: col, ink: o.ink || fallbackInk || defStepColor() };
       });
   }
 
@@ -14621,20 +14646,45 @@ OUTPUT — STRICT JSON ONLY, no markdown fence:
     if (typeof fixExamName === 'function') script = fixExamName(script, exam);
     c.script = script;
     c.steps = normSteps(parsed.steps, c.stepColor);
+
+    // Kịch bản có [1][2][3] mà không ra step nào → hỏi lại đúng 1 lần, chỉ xin
+    // phần steps, khỏi phải gen lại cả kịch bản.  [v38_18_3_138]
+    if (!c.steps.length && /\[\s*1\s*\]/.test(script)) {
+      if (onStatus) onStatus('⚠ Không có step — hỏi lại Gemini…');
+      try {
+        const fix = await pmAskGemini(
+          `Đây là câu hỏi trắc nghiệm và kịch bản đọc đã viết xong:
+
+QUESTION: ${q}
+OPTIONS: ${Object.keys(options).filter(L => options[L]).map(L => L + '. ' + options[L]).join(' | ')}
+CORRECT: ${answer}
+
+SCRIPT:
+${script}
+
+Viết các bước giải viết tay hiện trên màn hình, khớp đúng thứ tự với marker [1][2][3]... trong kịch bản.
+- Mỗi bước là MỘT dòng cực ngắn (dưới 30 ký tự), kiểu viết trên giấy nháp: phép tính, biến đổi, kết quả.
+- Số bước bằng đúng số marker trong kịch bản.
+- KHÔNG chép lại câu văn của kịch bản, KHÔNG đánh số thứ tự ở đầu dòng.
+
+OUTPUT — JSON thuần, đúng khuôn này, không thêm gì khác:
+{"steps":[{"text":"4x = 15","color":"blue"},{"text":"x = 3.75","color":"green"}]}
+Màu chọn trong: blue, green, orange, red, purple.`,
+          'steps_fix', onStatus);
+        c.steps = normSteps(fix.steps, c.stepColor);
+      } catch (e) {
+        console.warn('[steps fix]', e);
+      }
+      if (!c.steps.length) console.warn('[steps] VIDEO', i + 1, 'vẫn không có step sau khi hỏi lại');
+    }
   }
 
   async function doVoice(i, onStatus) {
     const c = PM.cards[i];
-    // Nếu card này đang mở trong editor và người dùng vừa sửa tay ô kịch bản
-    // (EDIT FREELY) thì lấy bản vừa sửa, đừng đọc bản cũ lưu trong card.
-    const stxNow = $('scriptText');
-    if (PM.active === i && stxNow && stxNow.value.trim() &&
-        stxNow.value.trim() !== String(c.script || '').trim()) {
-      c.script = stxNow.value.trim();
-      if (typeof pmSaveDebounced === 'function') pmSaveDebounced();
-      const sc = document.querySelectorAll('#pmCards .pm-script')[i];
-      if (sc) sc.value = c.script;
-    }
+    // ⚠ Ô kịch bản trên THẺ là nguồn duy nhất — nó ghi thẳng vào c.script mỗi
+    // lần gõ. Không được lấy lại từ #scriptText của editor ẩn: sau mỗi lượt
+    // chạy, editorRestore() trả ô đó về nội dung cũ, nên đọc từ đó là ghi đè
+    // mất bản người dùng vừa sửa.  [v38_18_3_139]
     if (!c.script) throw new Error('chưa có kịch bản — gen kịch bản trước');
     await loadCardIntoEditor(i, { skipAudio: true, quiet: true });
     $('scriptText').value = c.script;
